@@ -339,13 +339,6 @@ function isBinaryDigit(char: string) {
   return char === "0" || char === "1";
 }
 
-/** Returns true if the given character is a greek letter name. */
-function isGreekLetterName(c: string) {
-  return /^(alpha|beta|gamma|delta|epsilon|zeta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|upsilon|phi|chi|psi|omega)/.test(
-    c.toLowerCase()
-  );
-}
-
 /** Returns true if the given string `char` is a Latin/Greek character or a math symbol. Else, returns false. */
 function isValidName(char: string) {
   return isLatinGreek(char) || isMathSymbol(char);
@@ -368,9 +361,9 @@ export function lexical(source: string) {
   };
   const errorToken = (message: string) => {
     const err = newToken(TokenType.error, message, $line, $column);
-    $error = lexicalError(message, 'scanning', err);
+    $error = lexicalError(message, "scanning", err);
     return err;
-  }
+  };
   const advance = () => source[$current++];
   const skipWhitespace = () => {
     while (true) {
@@ -405,7 +398,7 @@ export function lexical(source: string) {
   };
 
   const binaryNumber = () => {
-    if (!(isBinaryDigit(peek()))) {
+    if (!isBinaryDigit(peek())) {
       return errorToken("Expected binary digits after 0b");
     }
     while ((peek() === "0" || peek() === "1") && !isAtEnd()) {
@@ -660,17 +653,19 @@ export function lexical(source: string) {
     if (!now.isType(TokenType.empty)) {
       out.push(now);
     }
-    // let peek = scan();
+    let peek = scan();
     while (!isAtEnd()) {
       prev = now;
-      //   now = peek;
+      now = peek;
       const k = scan();
       if (k.isType(TokenType.empty)) {
-        // continue;
+        continue;
+      } else {
+        peek = k;
       }
-      out.push(k);
+      out.push(now);
     }
-    // out.push(peek);
+    out.push(peek);
     return out;
   };
 
@@ -679,3 +674,91 @@ export function lexical(source: string) {
     scan,
   };
 }
+
+/** The binding power of a given operator. Values of type `bp` are used the parsers to determinate operator precedence (both the Twine and CAM parsers use Pratt parsing for expressions). */
+enum BP {
+  nil,
+  lowest,
+  stringop,
+  assign,
+  atom,
+  or,
+  nor,
+  and,
+  nand,
+  xor,
+  xnor,
+  not,
+  eq,
+  rel,
+  sum,
+  difference,
+  product,
+  quotient,
+  imul,
+  power,
+  postfix,
+  call,
+}
+
+enum nodekind {
+  class_statement,
+  block_statement,
+  string_binex,
+  grouped_expression,
+  expression_statement,
+  function_declaration,
+  branching_statement,
+  print_statement,
+  return_statement,
+  variable_declaration,
+  vector_binex,
+  loop_statement,
+  algebra_string,
+  tuple_expression,
+  vector_expression,
+  matrix_expression,
+  assignment_expression,
+  native_call,
+  algebraic_unary,
+  algebraic_infix,
+  logical_unary,
+  call,
+  nil,
+  fraction_expression,
+  numeric_constant,
+  integer,
+  float,
+  bool,
+  string,
+  symbol,
+  logical_infix,
+  let_expression,
+  get_expression,
+  set_expression,
+  super_expression,
+  this_expression,
+  relation,
+  indexing_expression,
+  big_number,
+  big_rational,
+}
+
+abstract class TREENODE {
+  abstract get kind(): nodekind;
+}
+
+interface Visitor<T> {}
+
+abstract class ASTNode extends TREENODE {
+  abstract accept<T>(visitor: Visitor<T>): T;
+}
+
+/** @internal A Pratt parsing function. */
+type Parslet<T> = (current: Token, lastNode: T) => Either<Erratum, T>;
+
+/** @internal An entry within parser’s BP table. The first element is a prefix parslet, the second element is an infix parslet, and the last element is the binding power of the operator. */
+type ParsletEntry<T> = [Parslet<T>, Parslet<T>, BP];
+
+/** @internal A record of parslet entries, where each key is a token type (`tt`). */
+type BPTable<T> = Record<TokenType, ParsletEntry<T>>;
