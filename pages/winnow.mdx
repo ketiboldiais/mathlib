@@ -1,0 +1,339 @@
+---
+title: "Winnow"
+description: "Documentation of Winnow, the language used on this site."
+date: "2024-11-19"
+---
+
+Figures and calculations on this site are generated with Winnow, a custom scripting language built specifically for Mathlib. 
+
+## Motivation
+As an undergraduate, I spent hours writing and rewriting notes. Because of my major -- philosophy, focusing on mathematical logic -- my notes comprised more symbols and geometries than prose and doodles. I'm not an artist, but I am a stickler for perfection (within reason). This led me to rewriting my notes in LaTeX and redrawing diagrams in Inkscape; a cumbersome process consuming many, many hours. 
+
+I faced the classic economic tradeoff: Do I spend those hours generating perfect notes or reviewing the notes I already had? Winnow is my attempt at meeting these two endpoints halfway -- set a few of those hours for generating perfect notes and the remaining hours for review.  
+
+To reach this midpoint, I defined a scripting language and implemented its interpreter. This documentation page serves two purposes: (1) documenting the language's features, and (2) recording the process of implementing Winnow.
+
+## Error Handling
+Winnow takes a functional approach to error handling -- whenever possible, we will return results in either a `Left` or `Right` object. These objects are implemented as follows:
+
+```ts
+type Either<A, B> = Left<A> | Right<B>;
+
+/** A box type corresponding to failure. */
+class Left<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<A>(f: (x: never) => A): Either<T, never> {
+    return this as any;
+  }
+  isLeft(): this is Left<T> {
+    return true;
+  }
+  isRight(): this is never {
+    return false;
+  }
+  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
+    return this;
+  }
+  read<K>(value: K): K {
+    return value;
+  }
+  flatten(): Left<T> {
+    return this;
+  }
+  unwrap() {
+    return this.value;
+  }
+  ap<B, E>(f: Either<T, E>): Either<never, B> {
+    return this as any;
+  }
+}
+
+/** A box type corresponding success. */
+class Right<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<X>(f: (x: T) => X): Either<never, X> {
+    return new Right(f(this.value));
+  }
+  isLeft(): this is never {
+    return false;
+  }
+  isRight(): this is Right<T> {
+    return true;
+  }
+  chain<N, X>(f: (x: T) => Either<N, X>): Either<never, X> {
+    return f(this.value) as Either<never, X>;
+  }
+  flatten(): Right<(T extends Right<(infer T)> ? T : never)> {
+    return ((this.value instanceof Right ||
+        this.value instanceof Left)
+      ? this.value
+      : this) as Right<(T extends Right<(infer T)> ? T : never)>;
+  }
+  read<K>(_: K): T {
+    return this.value;
+  }
+  unwrap() {
+    return this.value;
+  }
+  ap<B, E>(f: Either<E, (x: T) => B>): Either<never, B> {
+    if (f.isLeft()) return f as any as Right<B>;
+    return this.map(f.value);
+  }
+}
+```
+
+All errors in Winnow will be classified by a type:
+
+```ts
+type ErrorType =
+  | "lexical-error"
+  | "syntax-error"
+  | "type-error"
+  | "runtime-error"
+  | "resolver-error"
+  | "environment-error"
+  | "algebraic-error";
+```
+
+With these types defined, we can now implement the `Erratum` object:
+
+```ts
+class Erratum extends Error {
+  message: string;
+  errorType: ErrorType;
+  phase: string;
+  line: number;
+  column: number;
+  fix: string;
+  constructor(
+    message: string,
+    errorType: ErrorType,
+    phase: string,
+    line: number,
+    column: number,
+    fix: string = "none"
+  ) {
+    super(message);
+    this.message = message;
+    this.errorType = errorType;
+    this.phase = phase;
+    this.line = line;
+    this.column = column;
+    this.fix = fix;
+  }
+  report() {
+    return formattedError(
+      this.message,
+      this.phase,
+      this.errorType,
+      this.line,
+      this.column,
+      this.fix
+    );
+  }
+}
+```
+
+The function `formattedError` returns the erratum as a pretty-print string: 
+
+```ts
+/** Ensures all errors have the same format. */
+function formattedError(
+  message: string,
+  phase: string,
+  errorType: ErrorType,
+  line: number,
+  column: number,
+  recommendation: string
+) {
+  let moduleName = "module";
+  switch (errorType) {
+    case "lexical-error":
+      moduleName = "scanner";
+      break;
+    case "algebraic-error":
+      moduleName = "algebraic tree transfomer";
+      break;
+    case "environment-error":
+      moduleName = "environment";
+      break;
+    case "resolver-error":
+      moduleName = "resolver";
+      break;
+    case "runtime-error":
+      moduleName = "interpreter";
+      break;
+    case "syntax-error":
+      moduleName = "parser";
+      break;
+    case "type-error":
+      moduleName = "typechecker";
+  }
+  return `${errorType.toUpperCase()}.\nWhile ${phase}, an error occurred on\nline ${line}, column ${column}.\nReporting from the ${moduleName}:\n${message} \nRecommendation: ${recommendation}`;
+}
+```
+
+Now we define custom functions to return specific errors:
+
+```ts
+/** Returns a new error making function. */
+const errorFactory =
+  (errtype: ErrorType) =>
+  (message: string, phase: string, token: Token, fix: string = "none") =>
+    new Erratum(message, errtype, phase, token.line, token.column);
+
+/** Returns a new lexical error. A lexical error is raised if an error occured during scanning. */
+const lexicalError = errorFactory("lexical-error");
+
+/** Returns a new syntax error. A syntax error is raised if an error occured during parsing. */
+const syntaxError = errorFactory("syntax-error");
+
+/** Returns a new runtime error. A runtime error is raised if an error occured during interpretation. */
+const runtimeError = errorFactory("runtime-error");
+
+/** Returns a new environment error. An environment error is raised if an error occured during an environment lookup. */
+const envError = errorFactory("environment-error");
+
+/** Returns a new resolver error. A resolver error is raised if an error occured during resolution. */
+const resolverError = errorFactory("resolver-error");
+
+/** Returns a new algebra error. An algebra error is raised if an error occured during a symbolic operation. Because symbolic operations are handled by the symbol engine, these errors must be handled separately. */
+const algebraError = errorFactory("algebraic-error");
+```
+
+## Tokenization
+Winnow begins by grouping chunks of text into tokens. Each token has a specific type. In TypeScript, we implement this with an enum:
+
+```ts 
+enum TokenType {
+  // single-character tokens
+  left_paren,
+  right_paren,
+  left_brace,
+  right_brace,
+  left_bracket,
+  right_bracket,
+  comma,
+  dot,
+  minus,
+  plus,
+  semicolon,
+  slash,
+  star,
+  colon,
+  ampersand,
+  caret,
+  percent,
+
+  // one or two character tokens
+  bang,
+  bang_equal,
+  equal,
+  equal_equal,
+  greater,
+  greater_equal,
+  less,
+  less_equal,
+
+  // literals
+  identifier,
+  string,
+  integer,
+  float,
+
+  // keywords
+  and,
+  class,
+  else,
+  false,
+  for,
+  if,
+  nil,
+  or,
+  print,
+  return,
+  super,
+  this,
+  true,
+  var,
+  while,
+  nan,
+  inf,
+  pi,
+  e,
+  let,
+  fn,
+  rem,
+  mod,
+  div,
+  nor,
+  xor,
+  xnor,
+  not,
+  nand,
+
+  // utility tokens
+  error,
+  eof,
+  empty,
+}
+```
+
+With the enum defined, we implement the Token as a TypeScript object:
+
+```ts
+/** An object corresponding to a token in Winnow. */
+class Token {
+  /** This token's type. */
+  tokenType: TokenType;
+  /** This token's lexeme. */
+  lexeme: string;
+  /** The line where this token was recognized. */
+  line: number;
+  literal: Primitive = null;
+  constructor(tokenType: TokenType, lexeme: string, line: number) {
+    this.tokenType = tokenType;
+    this.lexeme = lexeme;
+    this.line = line;
+  }
+  /** Sets this token's literal value to the given primitive, and returns this. */
+  lit(value: Primitive) {
+    this.literal = value;
+    return this;
+  }
+  /** Returns true if this token is of the given type. */
+  isType(type: TokenType) {
+    return this.tokenType === type;
+  }
+  /** Returns a string representation of this token. */
+  toString() {
+    const type = TokenType[this.tokenType];
+    const lexeme = this.lexeme;
+    const line = this.line;
+    return `[${type} | ${lexeme} | ${line}]`;
+  }
+}
+```
+
+Notice the type `Primitive`. This is a custom type defined as follows:
+
+```ts
+type Primitive = string | number | boolean | null;
+```
+
+Some tokens will have a literal value. For example, the token `"17"` is of type `TokenType.integer`. There is a difference between the string `"17"` and the integer 17. Since we recognize 17 as an integer at the scanning stage, we might as well attach the numeric 17 to the Token object. Similarly, if we recognize the string `"true"` as a Boolean value, we ought to attach the Boolean `true` to the resulting object. Since the majority of tokens do not have literal values (e.g., keywords, operators, and delimiters), we set the default literal value of a token to the JavaScript `null` and assign literal values as needed with the method `lit`. 
+
+We will also define two other helpful methods: (1) `isType`, which returns true if the given type matches the object's type, and (2) `toString`, which returns a simple string representation of the token.
+
+<Terminal/>
+
+With all of this, we can now write the scanner:
+
+
+

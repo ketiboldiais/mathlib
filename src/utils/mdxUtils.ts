@@ -2,6 +2,10 @@ import fsp from "fs/promises"
 import path from "path"
 import { cache } from "react"
 import { compileMDX } from "next-mdx-remote/rsc";
+import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
+import rehypeKatex from "rehype-katex";
+import Terminal from "@/components/Terminal";
 
 export type PostsFrontMatter = {
     title: string;
@@ -12,7 +16,19 @@ export type PostsFrontMatter = {
 export const getCompiledMDX = cache(async (postSlug: string) => {
     const postFilePath = path.join(POSTS_PATH, `${postSlug}.mdx`); 
     const source = await fsp.readFile(postFilePath);
-    return compileMDX<PostsFrontMatter>({source, options: {parseFrontmatter: true}})
+    return compileMDX<PostsFrontMatter>({
+        source, 
+        components: {
+            Terminal: Terminal
+        },
+        options: {
+            mdxOptions: {
+                rehypePlugins: [rehypeKatex],
+                remarkPlugins: [remarkGfm, remarkMath],
+            },
+            parseFrontmatter: true,
+        }
+    })
 })
 
 const POSTS_PATH = path.join(process.cwd(), "pages");
