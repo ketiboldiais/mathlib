@@ -1,5 +1,84 @@
 /** Global maximum integer. */
+
 const MAX_INT = Number.MAX_SAFE_INTEGER;
+
+/** At the parsing stage, all parsed node results are kept in an `Either` type (either an AST node) or an Err (error) object. We want to avoid throwing as much as possible for optimal parsing. */
+type Either<A, B> = Left<A> | Right<B>;
+
+/** A box type corresponding to failure. */
+class Left<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<A>(f: (x: never) => A): Either<T, never> {
+    return this as any;
+  }
+  isLeft(): this is Left<T> {
+    return true;
+  }
+  isRight(): this is never {
+    return false;
+  }
+  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
+    return this;
+  }
+  read<K>(value: K): K {
+    return value;
+  }
+  flatten(): Left<T> {
+    return this;
+  }
+  unwrap() {
+    return this.value;
+  }
+  ap<B, E>(f: Either<T, E>): Either<never, B> {
+    return this as any;
+  }
+}
+
+/** A box type corresponding success. */
+class Right<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<X>(f: (x: T) => X): Either<never, X> {
+    return new Right(f(this.value));
+  }
+  isLeft(): this is never {
+    return false;
+  }
+  isRight(): this is Right<T> {
+    return true;
+  }
+  chain<N, X>(f: (x: T) => Either<N, X>): Either<never, X> {
+    return f(this.value) as Either<never, X>;
+  }
+  flatten(): Right<T extends Right<infer T> ? T : never> {
+    return (
+      this.value instanceof Right || this.value instanceof Left
+        ? this.value
+        : this
+    ) as Right<T extends Right<infer T> ? T : never>;
+  }
+  read<K>(_: K): T {
+    return this.value;
+  }
+  unwrap() {
+    return this.value;
+  }
+  ap<B, E>(f: Either<E, (x: T) => B>): Either<never, B> {
+    if (f.isLeft()) return f as any as Right<B>;
+    return this.map(f.value);
+  }
+}
+
+/** Returns a new left. */
+const left = <T>(x: T): Left<T> => new Left(x);
+
+/** Returns a new right. */
+const right = <T>(x: T): Right<T> => new Right(x);
 /**
  * Errors in Winnow are classified by type.
  *  * `lexical-error` - an error during scanning.
@@ -81,8 +160,7 @@ function formattedError(
 
 /** Returns a new error making function. */
 const errorFactory =
-  (errtype: ErrorType) =>
-  (message: string, phase: string, token: Token, fix: string = "none") =>
+  (errtype: ErrorType) => (message: string, phase: string, token: Token) =>
     new Erratum(message, errtype, phase, token.line, token.column);
 
 /** Returns a new lexical error. A lexical error is raised if an error occured during scanning. */
@@ -193,45 +271,64 @@ type NumberTokenType =
   | TokenType.fraction
   | TokenType.scientific;
 
-type Primitive = string | number | boolean | null | [Primitive, Primitive];
+type Primitive =
+  | string
+  | number
+  | boolean
+  | null
+  | Erratum
+  | [Primitive, Primitive];
 
 /** An object corresponding to a token in Winnow. */
-class Token {
+class Token<T extends TokenType = TokenType, L extends Primitive = Primitive> {
   /** This token's type. */
-  tokenType: TokenType;
+  tokenType: T;
+
   /** This token's lexeme. */
   lexeme: string;
+
   /** The line where this token was recognized. */
   line: number;
+
+  /** The column where this token was recognized. */
   column: number;
-  literal: Primitive = null;
-  constructor(
-    tokenType: TokenType,
-    lexeme: string,
-    line: number,
-    column: number
-  ) {
+
+  /** This token's literal value, if any. */
+  literal: L = null as any;
+
+  constructor(tokenType: T, lexeme: string, line: number, column: number) {
     this.tokenType = tokenType;
     this.lexeme = lexeme;
     this.line = line;
     this.column = column;
   }
+
   /** Sets this token's literal value to the given primitive, and returns this. */
-  lit(value: Primitive) {
+  lit(value: L) {
     this.literal = value;
     return this;
   }
+
   /** Returns true if this token is of the given type. */
   isType(type: TokenType) {
     return this.tokenType === type;
   }
+
   /** Returns a string representation of this token. */
   toString() {
     const type = TokenType[this.tokenType];
     const lexeme = this.lexeme;
     const line = this.line;
-    return `[${type} | ${lexeme} | ${line}]`;
+    const lit = this.literal;
+    return `{Type: ${type}, Lexeme: ${lexeme}, Line: ${line}, Literal: ${lit}}`;
   }
+
+  isErrorToken(): this is Token<TokenType.error, Erratum> {
+    return this.isType(TokenType.error);
+  }
+
+  static empty = new Token(TokenType.empty, "", -1, -1);
+  static end = new Token(TokenType.eof, "", -1, -1);
 }
 
 /** Returns a new token. */
@@ -241,9 +338,6 @@ const newToken = (
   line: number,
   column: number
 ) => new Token(type, lexeme, line, column);
-
-/** Returns an empty token. */
-const emptyToken = () => newToken(TokenType.empty, "", -1, -1);
 
 /** Returns true if the string `char` is a Latin or Greek character. */
 function isLatinGreek(char: string) {
@@ -328,7 +422,9 @@ export function lexical(source: string) {
   /** Returns a new error token with the given message. */
   const errorToken = (message: string) => {
     const err = newToken(TokenType.error, message, $line, $column);
-    $error = lexicalError(message, "scanning", err);
+    const newError = lexicalError(message, "scanning", err);
+    $error = newError;
+    err.lit(newError);
     return err;
   };
 
@@ -524,7 +620,7 @@ export function lexical(source: string) {
         return makeToken(type).lit(tuple(N, D));
       }
       default: {
-        return errorToken(`Unknown number type`);
+        return errorToken(`Unknown number type: "${numberString}"`);
       }
     }
   };
@@ -683,7 +779,7 @@ export function lexical(source: string) {
   /** Scans the entire source code for tokens at once. */
   const stream = () => {
     const out: Token[] = [];
-    let prev = emptyToken();
+    let prev: Token<any, any> = Token.empty;
     let now = scan();
     if (!now.isType(TokenType.empty)) {
       out.push(now);
@@ -711,4 +807,177 @@ export function lexical(source: string) {
     scan,
     isDone,
   };
+}
+
+class ParserState<STMT, EXPR> {
+  /** Indicates whether an error has occurred. */
+  ERROR: null | Erratum = null;
+
+  /** Given an error object, initializes the state's ERROR field. */
+  panic(error: Erratum) {
+    this.ERROR = error;
+    return this;
+  }
+
+  /** This parser state's lexer. */
+  private lexer!: ReturnType<typeof lexical>;
+
+  /** Initializes this parser's state. */
+  init(source: string) {
+    this.lexer = lexical(source);
+  }
+
+  /** The last token parsed. */
+  prev: Token = Token.empty;
+
+  /** Where the parser currently is. */
+  cursor: number = -1;
+
+  /** The next token to parse. */
+  peek: Token = Token.empty;
+
+  /** The current token to parse. */
+  current: Token = Token.empty;
+
+  /** This parser state's source code. */
+  source: string = "";
+
+  /** The last expression parsed. */
+  lastExpression: EXPR;
+
+  /** The current expression to parse. */
+  currentExpression: EXPR;
+
+  /** The last statement parsed. */
+  lastStmt: STMT;
+
+  /** The current statement parsed. */
+  currentStmt: STMT;
+  constructor(nilExpression: EXPR, emptyStmt: STMT) {
+    this.lastExpression = nilExpression;
+    this.currentExpression = nilExpression;
+    this.lastStmt = emptyStmt;
+    this.currentStmt = emptyStmt;
+  }
+
+  /** Returns a successfully parsed expression. */
+  newExpression<E extends EXPR>(expression: E) {
+    const prev = this.currentExpression;
+    this.currentExpression = expression;
+    this.lastExpression = prev;
+    return right(expression);
+  }
+
+  /** Returns a successfully parsed statement. */
+  newStmt<S extends STMT>(statement: S) {
+    const prev = this.currentStmt;
+    this.currentStmt = statement;
+    this.lastStmt = prev;
+    const out = right(statement);
+    return out;
+  }
+
+  /**
+   * Moves the parser state forward.
+   */
+  next() {
+    this.cursor++;
+    this.current = this.peek;
+    const nextToken = this.lexer.scan();
+    if (nextToken.isErrorToken()) {
+      this.ERROR = nextToken.literal;
+      return Token.end;
+    } else {
+      this.peek = nextToken;
+      return this.current;
+    }
+  }
+
+  /**
+   * Returns true if parsing is complete.
+   * Parsing is complete if the lexer has completed scanning,
+   * or if the parser state has reached an error.
+   */
+  atEnd() {
+    return this.lexer.isDone() || this.ERROR !== null;
+  }
+
+  /**
+   * Returns a failed result containing an error.
+   * @param message - What message should the error display?
+   * @param phase - What phase did this error occur in?
+   */
+  error(message: string, phase: string) {
+    const e = syntaxError(message, phase, this.current);
+    this.ERROR = e;
+    return left(e);
+  }
+
+  /**
+   * Returns true if the next token matches the given
+   * tokenType, false otherwise.
+   */
+  check(tokenType: TokenType) {
+    if (this.atEnd()) {
+      return false;
+    } else {
+      return this.peek.isType(tokenType);
+    }
+  }
+
+  /**
+   * If the next token matches the given type,
+   * the parser moves forward (consuming
+   * the token) and returns true. Otherwise, returns
+   * false and the parser does not move forward.
+   */
+  nextIs(tokenType: TokenType) {
+    if (this.peek.isType(tokenType)) {
+      this.next();
+      return true;
+    } else {
+      return false;
+    }
+  }
+}
+
+interface Visitor<T> {
+  expressionStatement(node: ExpressionStatement): T;
+}
+
+/**
+ * An object corresponding to an
+ * Abstract Syntax Tree (AST) node.
+ */
+abstract class ASTNode {
+  abstract accept<T>(visitor: Visitor<T>): T;
+}
+
+/**
+ * An object corresponding to a Winnow statement.
+ */
+abstract class Statement extends ASTNode {}
+
+/**
+ * An object corresponding to an expression statement.
+ */
+class ExpressionStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.expressionStatement(this);
+  }
+}
+
+/**
+ * An object corresponding to a Winnow expression.
+ */
+abstract class Expression extends ASTNode {}
+
+
+
+const enstate = <EXPR, STMT>(nilExpression: EXPR, emptyStatement: STMT) =>
+  new ParserState(nilExpression, emptyStatement);
+
+/** Parses the given source code. */
+function syntax(source: string) {
+  // const state = enstate(nil(), )
 }
