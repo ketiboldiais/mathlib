@@ -26,17 +26,37 @@ pre, code {
   font-family: KaTeX_typewriter;
   font-size: 14px;
 }
+textarea {
+  width: 100%;
+}
 
 pre {
+  padding: 0 1rem;
   overflow-x: scroll;
+  border-left: 0.3rem solid lightgrey;
 }
 
 p {
   margin: 20px 0;
 }
 
+h1 {
+  text-align: center;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-weight: bold;
   font-size: large;
+}
+
+table, th, td {
+  border: solid thin lightgrey;
+  margin: auto;
+}
+table td {
+  padding: 5px;
+}
+
+h2, h3, h4, h5, h6 {
   text-decoration: underline;
 }
