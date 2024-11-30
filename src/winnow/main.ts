@@ -198,6 +198,9 @@ class Fraction {
     this.$n = n;
     this.$d = d;
   }
+  toString() {
+    return `${this.$n}/${this.$d}`;
+  }
 }
 
 /**
@@ -207,7 +210,7 @@ class Fraction {
  * @param d The denominator of this fraction (must be an integer).
  * @returns A new instance of a fraction.
  */
-function frac(n: number, d: number) {
+function fraction(n: number, d: number) {
   return new Fraction(Math.floor(n), Math.floor(d));
 }
 
@@ -348,6 +351,10 @@ class Token<
     return this.$type === type;
   }
 
+  isErrorToken(): this is Token<TOKEN_TYPE.ERROR, Err> {
+    return this.$type === TOKEN_TYPE.ERROR;
+  }
+
   /**
    * Returns true if and only if this token is a
    * right-delimiter token. That is, either a `)`,
@@ -369,9 +376,11 @@ class Token<
     -1
   );
   static end: Token<TOKEN_TYPE, any> = new Token(TOKEN_TYPE.END, "END", -1, -1);
-  
+
   toString() {
-    return `{token: ${TOKEN_TYPE[this.$type]}, lexeme: ${this.$lexeme}, line: ${this.$line}, column: ${this.$column}, literal: ${this.$literal}}`
+    return `{token: ${TOKEN_TYPE[this.$type]}, lexeme: ${this.$lexeme}, line: ${
+      this.$line
+    }, column: ${this.$column}, literal: ${this.$literal}}`;
   }
 }
 
@@ -713,7 +722,7 @@ export function lexical(code: string) {
         const [a, b] = n.split("|");
         const N = Number.parseInt(a);
         const D = Number.parseInt(b);
-        return tkn(type).withLiteral(frac(N, D));
+        return tkn(type).withLiteral(fraction(N, D));
       }
       case TOKEN_TYPE.SCIENTIFIC: {
         const [a, b] = n.split("E");
@@ -997,9 +1006,566 @@ export function lexical(code: string) {
   return { stream, scan, atEnd };
 }
 
-abstract class TREENODE {}
+interface Visitor<T> {
+  // Statements
+  expressionStatement(node: ExpressionStatement): T;
+  blockStatement(node: BlockStatement): T;
+  // Expressions
+  integer(node: Integer): T;
+  float(node: Float): T;
+  bool(node: Bool): T;
+  nil(node: Nil): T;
+  frac(node: Frac): T;
+  string(node: StringLiteral): T;
+  variable(node: Variable): T;
+  logicalBinaryExpression(node: LogicalBinaryExpression): T;
+  relationExpression(node: RelationExpression): T;
+  algebraicBinaryExpression(node: AlgebraicBinaryExpression): T;
+}
 
+enum NODEKIND {
+  // Statements
+  EXPRESSION_STATEMENT,
+  BLOCK_STATEMENT,
+  // Expressions
+  INTEGER,
+  FLOAT,
+  BOOL,
+  NIL,
+  FRACTION,
+  STRING,
+  VARIABLE,
+  LOGICAL_INFIX,
+  ALGEBRAIC_INFIX,
+  RELATION,
+}
+
+abstract class TREENODE {
+  abstract get kind(): NODEKIND;
+}
+
+abstract class ASTNode extends TREENODE {
+  abstract accept<T>(visitor: Visitor<T>): T;
+  abstract toString(): string;
+  abstract isStatement(): this is Statement;
+  abstract isExpr(): this is Expression;
+}
+
+abstract class Statement extends ASTNode {
+  isStatement(): this is Statement {
+    return true;
+  }
+  isExpr(): this is Expression {
+    return false;
+  }
+  toString(): string {
+    return "";
+  }
+}
+
+class ExpressionStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.expressionStatement(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.EXPRESSION_STATEMENT;
+  }
+  $expression: Expression;
+  $line: number;
+  constructor(expression: Expression, line: number) {
+    super();
+    this.$expression = expression;
+    this.$line = line;
+  }
+}
+const exprStmt = (expression: Expression, line: number) =>
+  new ExpressionStatement(expression, line);
+
+class BlockStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.blockStatement(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.BLOCK_STATEMENT;
+  }
+  $statements: Statement[];
+  constructor(statements: Statement[]) {
+    super();
+    this.$statements = statements;
+  }
+}
+const blockStmt = (statements: Statement[]) => new BlockStatement(statements);
+
+abstract class Expression extends ASTNode {
+  isStatement(): this is Statement {
+    return false;
+  }
+  isExpr(): this is Expression {
+    return true;
+  }
+}
+
+class Integer extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.integer(this);
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.INTEGER;
+  }
+  $value: number;
+  constructor(value: number) {
+    super();
+    this.$value = value;
+  }
+}
+const integer = (n: number) => new Integer(Math.floor(n));
+
+class Float extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.float(this);
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.FLOAT;
+  }
+  $value: number;
+  constructor(value: number) {
+    super();
+    this.$value = value;
+  }
+}
+const float = (n: number) => new Float(n);
+
+class Bool extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.bool(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.BOOL;
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  $value: boolean;
+  constructor(value: boolean) {
+    super();
+    this.$value = value;
+  }
+}
+const bool = (b: boolean) => new Bool(b);
+
+class Nil extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.nil(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.NIL;
+  }
+  toString(): string {
+    return "nil";
+  }
+  $value: null = null;
+  constructor() {
+    super();
+  }
+}
+const nil = () => new Nil();
+
+class Frac extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.frac(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.FRACTION;
+  }
+  toString(): string {
+    return this.$value.toString();
+  }
+  $value: Fraction;
+  constructor(value: Fraction) {
+    super();
+    this.$value = value;
+  }
+}
+const frac = (value: Fraction) => new Frac(value);
+
+class StringLiteral extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.string(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.STRING;
+  }
+  toString(): string {
+    return `"${this.$value}"`;
+  }
+  $value: string;
+  constructor(value: string) {
+    super();
+    this.$value = value;
+  }
+}
+
+class Variable extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.variable(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.VARIABLE;
+  }
+  toString(): string {
+    return `${this.$name.$lexeme}`;
+  }
+  $name: Token<TOKEN_TYPE.SYMBOL>;
+  constructor(name: Token<TOKEN_TYPE.SYMBOL>) {
+    super();
+    this.$name = name;
+  }
+}
+const variable = (name: Token<TOKEN_TYPE.SYMBOL>) => new Variable(name);
+
+type BinaryLogicOperator =
+  | TOKEN_TYPE.AND
+  | TOKEN_TYPE.NAND
+  | TOKEN_TYPE.NOR
+  | TOKEN_TYPE.XNOR
+  | TOKEN_TYPE.XOR
+  | TOKEN_TYPE.OR;
+
+class LogicalBinaryExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.logicalBinaryExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.LOGICAL_INFIX;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expression;
+  $op: Token<BinaryLogicOperator>;
+  $right: Expression;
+  constructor(
+    left: Expression,
+    op: Token<BinaryLogicOperator>,
+    right: Expression
+  ) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+const logicalBinex = (
+  left: Expression,
+  op: Token<BinaryLogicOperator>,
+  right: Expression
+) => new LogicalBinaryExpression(left, op, right);
+
+type RelationOperator =
+  | TOKEN_TYPE.LESS
+  | TOKEN_TYPE.GREATER
+  | TOKEN_TYPE.EQUAL_EQUAL
+  | TOKEN_TYPE.BANG_EQUAL
+  | TOKEN_TYPE.GREATER_EQUAL
+  | TOKEN_TYPE.LESS_EQUAL;
+
+class RelationExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.relationExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.RELATION;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expression;
+  $op: Token<RelationOperator>;
+  $right: Expression;
+  constructor(
+    left: Expression,
+    op: Token<RelationOperator>,
+    right: Expression
+  ) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+const relation = (
+  left: Expression,
+  op: Token<RelationOperator>,
+  right: Expression
+) => new RelationExpression(left, op, right);
+
+type AlgebraicOperator =
+  | TOKEN_TYPE.PLUS
+  | TOKEN_TYPE.STAR
+  | TOKEN_TYPE.CARET
+  | TOKEN_TYPE.SLASH
+  | TOKEN_TYPE.MINUS
+  | TOKEN_TYPE.REM
+  | TOKEN_TYPE.MOD
+  | TOKEN_TYPE.PERCENT
+  | TOKEN_TYPE.DIV;
+
+class AlgebraicBinaryExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.algebraicBinaryExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.ALGEBRAIC_INFIX;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expression;
+  $op: Token<AlgebraicOperator>;
+  $right: Expression;
+  constructor(
+    left: Expression,
+    op: Token<AlgebraicOperator>,
+    right: Expression
+  ) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+const algebraicBinex = (
+  left: Expression,
+  op: Token<AlgebraicOperator>,
+  right: Expression
+) => new AlgebraicBinaryExpression(left, op, right);
 
 class ParserState<STMT extends TREENODE, EXPR extends TREENODE> {
+  /**
+   * Property bound to the current error status.
+   * If this variable is not bound to null, then
+   * an error occurred. This variable should only
+   * be modified through the panic method or
+   * through the error method.
+   */
+  $ERROR: null | Err = null;
+  /**
+   * If called, sets the $ERROR property of this parser state
+   * to the given error. This will stop any further parsing.
+   * @param error An Err object.
+   * @returns this ParserState.
+   */
+  panic(error: Err) {
+    this.$ERROR = error;
+    return this;
+  }
+  private lexer!: ReturnType<typeof lexical>;
+  init(sourceCode: string) {
+    this.lexer = lexical(sourceCode);
+    this.next();
+    return this;
+  }
+  $prev: Token = Token.empty;
+  $peek: Token = Token.empty;
+  $current: Token = Token.empty;
+  $cursor: number = -1;
+  $lastExpression: EXPR;
+  $currentExpression: EXPR;
+  $lastStatement: NODEKIND;
+  $currentStatement: NODEKIND;
+  $source: string = "";
+  constructor(nilExpression: EXPR, emptyStatement: STMT) {
+    this.$lastExpression = nilExpression;
+    this.$currentExpression = nilExpression;
+    this.$lastStatement = emptyStatement.kind;
+    this.$currentStatement = emptyStatement.kind;
+  }
+  implicitSemicolonOK() {
+    return this.$peek.isType(TOKEN_TYPE.END) || this.atEnd();
+  }
+  newExpression<E extends EXPR>(expression: E) {
+    const prev = this.$currentExpression;
+    this.$currentExpression = expression;
+    this.$lastExpression = prev;
+    return right(expression);
+  }
+  newStatement<S extends STMT>(statement: S) {
+    const prev = this.$currentStatement;
+    this.$currentStatement = statement.kind;
+    this.$lastStatement = prev;
+    return right(statement);
+  }
+  next() {
+    this.$cursor++;
+    this.$current = this.$peek;
+    const nxtToken = this.lexer.scan();
+    if (nxtToken.isErrorToken()) {
+      this.$ERROR = nxtToken.$literal;
+      return Token.end;
+    }
+    this.$peek = nxtToken;
+    return this.$current;
+  }
+  atEnd() {
+    return this.lexer.atEnd() || this.$ERROR !== null;
+  }
+  error(message: string) {
+    const e = syntaxError(message, this.$current.$line, this.$current.$column);
+    this.$ERROR = e;
+    return left(e);
+  }
+  check(tokenType: TOKEN_TYPE) {
+    if (this.atEnd()) {
+      return false;
+    } else {
+      return this.$peek.isType(tokenType);
+    }
+  }
+  nextIs(tokenType: TOKEN_TYPE) {
+    if (this.$peek.isType(tokenType)) {
+      this.next();
+      return true;
+    }
+    return false;
+  }
+}
 
+const enstate = <EXPR extends TREENODE, STMT extends TREENODE>(
+  nilExpression: EXPR,
+  emptyStatement: STMT
+) => new ParserState(nilExpression, emptyStatement);
+
+enum BP {
+  NIL,
+  LOWEST,
+  STRINGOP,
+  ASSIGN,
+  ATOM,
+  OR,
+  NOR,
+  AND,
+  NAND,
+  XOR,
+  XNOR,
+  NOT,
+  EQ,
+  REL,
+  SUM,
+  DIFFERENCE,
+  PRODUCT,
+  QUOTIENT,
+  IMUL,
+  POWER,
+  POSTFIX,
+  CALL,
+}
+type Parslet<T> = (current: Token, lastNode: T) => Either<Err, T>;
+type ParsletEntry<T> = [Parslet<T>, Parslet<T>, BP];
+type BPTable<T> = Record<TOKEN_TYPE, ParsletEntry<T>>;
+function syntax(source: string) {
+  const state = enstate<Expression, Statement>(nil(), exprStmt(nil(), -1)).init(
+    source
+  );
+  
+  const ___: Parslet<Expression> = (t) => {
+    if (state.$ERROR !== null) return left(state.$ERROR);
+    return state.error(`Unexpected token: ${t.$lexeme}`);
+  }
+  const ___o = BP.NIL;
+  
+  const rules: BPTable<Expression> = {
+    [TOKEN_TYPE.END]: [___, ___, ___o],
+    [TOKEN_TYPE.ERROR]: [___, ___, ___o],
+    [TOKEN_TYPE.EMPTY]: [___, ___, ___o],
+    [TOKEN_TYPE.LEFT_PAREN]: [___, ___, ___o],
+    [TOKEN_TYPE.RIGHT_PAREN]: [___, ___, ___o],
+    [TOKEN_TYPE.LEFT_BRACE]: [___, ___, ___o],
+    [TOKEN_TYPE.RIGHT_BRACE]: [___, ___, ___o],
+    [TOKEN_TYPE.LEFT_BRACKET]: [___, ___, ___o],
+    [TOKEN_TYPE.RIGHT_BRACKET]: [___, ___, ___o],
+    [TOKEN_TYPE.SEMICOLON]: [___, ___, ___o],
+    [TOKEN_TYPE.COLON]: [___, ___, ___o],
+    [TOKEN_TYPE.DOT]: [___, ___, ___o],
+    [TOKEN_TYPE.COMMA]: [___, ___, ___o],
+    [TOKEN_TYPE.PLUS]: [___, ___, ___o],
+    [TOKEN_TYPE.MINUS]: [___, ___, ___o],
+    [TOKEN_TYPE.STAR]: [___, ___, ___o],
+    [TOKEN_TYPE.SLASH]: [___, ___, ___o],
+    [TOKEN_TYPE.CARET]: [___, ___, ___o],
+    [TOKEN_TYPE.PERCENT]: [___, ___, ___o],
+    [TOKEN_TYPE.BANG]: [___, ___, ___o],
+    [TOKEN_TYPE.AMPERSAND]: [___, ___, ___o],
+    [TOKEN_TYPE.TILDE]: [___, ___, ___o],
+    [TOKEN_TYPE.VBAR]: [___, ___, ___o],
+    [TOKEN_TYPE.EQUAL]: [___, ___, ___o],
+    [TOKEN_TYPE.LESS]: [___, ___, ___o],
+    [TOKEN_TYPE.GREATER]: [___, ___, ___o],
+    [TOKEN_TYPE.LESS_EQUAL]: [___, ___, ___o],
+    [TOKEN_TYPE.GREATER_EQUAL]: [___, ___, ___o],
+    [TOKEN_TYPE.BANG_EQUAL]: [___, ___, ___o],
+    [TOKEN_TYPE.EQUAL_EQUAL]: [___, ___, ___o],
+    [TOKEN_TYPE.PLUS_PLUS]: [___, ___, ___o],
+    [TOKEN_TYPE.MINUS_MINUS]: [___, ___, ___o],
+    [TOKEN_TYPE.STAR_STAR]: [___, ___, ___o],
+    [TOKEN_TYPE.DOT_ADD]: [___, ___, ___o],
+    [TOKEN_TYPE.DOT_STAR]: [___, ___, ___o],
+    [TOKEN_TYPE.DOT_MINUS]: [___, ___, ___o],
+    [TOKEN_TYPE.DOT_CARET]: [___, ___, ___o],
+    [TOKEN_TYPE.AT]: [___, ___, ___o],
+    [TOKEN_TYPE.POUND_PLUS]: [___, ___, ___o],
+    [TOKEN_TYPE.POUND_MINUS]: [___, ___, ___o],
+    [TOKEN_TYPE.POUND_STAR]: [___, ___, ___o],
+    [TOKEN_TYPE.SYMBOL]: [___, ___, ___o],
+    [TOKEN_TYPE.STRING]: [___, ___, ___o],
+    [TOKEN_TYPE.BOOLEAN]: [___, ___, ___o],
+    [TOKEN_TYPE.INTEGER]: [___, ___, ___o],
+    [TOKEN_TYPE.FLOAT]: [___, ___, ___o],
+    [TOKEN_TYPE.FRACTION]: [___, ___, ___o],
+    [TOKEN_TYPE.SCIENTIFIC]: [___, ___, ___o],
+    [TOKEN_TYPE.BIG_NUMBER]: [___, ___, ___o],
+    [TOKEN_TYPE.FALSE]: [___, ___, ___o],
+    [TOKEN_TYPE.TRUE]: [___, ___, ___o],
+    [TOKEN_TYPE.NAN]: [___, ___, ___o],
+    [TOKEN_TYPE.INF]: [___, ___, ___o],
+    [TOKEN_TYPE.NIL]: [___, ___, ___o],
+    [TOKEN_TYPE.NUMERIC_CONSTANT]: [___, ___, ___o],
+    [TOKEN_TYPE.ALGEBRAIC]: [___, ___, ___o],
+    [TOKEN_TYPE.AND]: [___, ___, ___o],
+    [TOKEN_TYPE.OR]: [___, ___, ___o],
+    [TOKEN_TYPE.NOT]: [___, ___, ___o],
+    [TOKEN_TYPE.NAND]: [___, ___, ___o],
+    [TOKEN_TYPE.XOR]: [___, ___, ___o],
+    [TOKEN_TYPE.XNOR]: [___, ___, ___o],
+    [TOKEN_TYPE.NOR]: [___, ___, ___o],
+    [TOKEN_TYPE.IF]: [___, ___, ___o],
+    [TOKEN_TYPE.ELSE]: [___, ___, ___o],
+    [TOKEN_TYPE.FN]: [___, ___, ___o],
+    [TOKEN_TYPE.LET]: [___, ___, ___o],
+    [TOKEN_TYPE.VAR]: [___, ___, ___o],
+    [TOKEN_TYPE.RETURN]: [___, ___, ___o],
+    [TOKEN_TYPE.WHILE]: [___, ___, ___o],
+    [TOKEN_TYPE.FOR]: [___, ___, ___o],
+    [TOKEN_TYPE.CLASS]: [___, ___, ___o],
+    [TOKEN_TYPE.PRINT]: [___, ___, ___o],
+    [TOKEN_TYPE.SUPER]: [___, ___, ___o],
+    [TOKEN_TYPE.THIS]: [___, ___, ___o],
+    [TOKEN_TYPE.REM]: [___, ___, ___o],
+    [TOKEN_TYPE.MOD]: [___, ___, ___o],
+    [TOKEN_TYPE.DIV]: [___, ___, ___o]
+  }
 }
