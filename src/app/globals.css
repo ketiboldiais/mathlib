@@ -31,13 +31,40 @@ textarea {
 }
 
 pre {
-  padding: 0 1rem;
+  padding: 1rem;
+  border-radius: 0.5em;
   overflow-x: scroll;
-  border-left: 0.3rem solid lightgrey;
+  background-color: rgb(42, 50, 57);
+  color: white;
 }
 
+.hljs-comment {
+  color: rgb(136, 136, 136);
+}
+.hljs-keyword {
+  color: rgb(255, 123, 123);
+}
+.hljs-attr, .hljs-property {
+  color: rgb(210, 149, 210);
+}
+.hljs-variable {
+  color: rgb(255, 221, 0);
+}
+.hljs-built_in {
+  color: rgb(109, 197, 200);
+}
+
+
 p {
-  margin: 20px 0;
+  margin: 3vh 0;
+}
+h1+p,
+h2+p,
+h3+p,
+h4+p,
+h5+p,
+h6+p {
+  margin-top: 0;
 }
 
 h1 {
@@ -59,4 +86,28 @@ table td {
 
 h2, h3, h4, h5, h6 {
   text-decoration: underline;
+  margin-top: 4vh;
+}
+
+a {
+  text-decoration: underline;
+}
+
+blockquote {
+  padding: 0 0 0 0.5em;
+  width: 80%;
+  border-left: solid 2px rgb(188, 188, 188);
+  margin: auto;
+}
+
+figcaption {
+  font-style: italic;
+  margin: 0 auto;
+  width: 60%;
+  text-align: center;
+  color: rgb(175, 175, 175);
+}
+
+figcaption p {
+  margin: 5px 0;
 }

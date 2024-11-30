@@ -1,11 +1,6 @@
-/** Global maximum integer. */
-
-const MAX_INT = Number.MAX_SAFE_INTEGER;
-
-/** At the parsing stage, all parsed node results are kept in an `Either` type (either an AST node) or an Err (error) object. We want to avoid throwing as much as possible for optimal parsing. */
 type Either<A, B> = Left<A> | Right<B>;
 
-/** A box type corresponding to failure. */
+/** An object corresponding to failure. */
 class Left<T> {
   private value: T;
   constructor(value: T) {
@@ -20,24 +15,18 @@ class Left<T> {
   isRight(): this is never {
     return false;
   }
-  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
-    return this;
-  }
-  read<K>(value: K): K {
-    return value;
-  }
-  flatten(): Left<T> {
-    return this;
-  }
   unwrap() {
     return this.value;
   }
-  ap<B, E>(f: Either<T, E>): Either<never, B> {
-    return this as any;
+  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
+    return this;
   }
 }
 
-/** A box type corresponding success. */
+/** Returns a new Left with value `x` of type `T`. */
+const left = <T>(x: T) => new Left(x);
+
+/** An object corresponding to success. */
 class Right<T> {
   private value: T;
   constructor(value: T) {
@@ -52,390 +41,491 @@ class Right<T> {
   isRight(): this is Right<T> {
     return true;
   }
-  chain<N, X>(f: (x: T) => Either<N, X>): Either<never, X> {
-    return f(this.value) as Either<never, X>;
-  }
-  flatten(): Right<T extends Right<infer T> ? T : never> {
-    return (
-      this.value instanceof Right || this.value instanceof Left
-        ? this.value
-        : this
-    ) as Right<T extends Right<infer T> ? T : never>;
-  }
-  read<K>(_: K): T {
-    return this.value;
-  }
   unwrap() {
     return this.value;
   }
-  ap<B, E>(f: Either<E, (x: T) => B>): Either<never, B> {
-    if (f.isLeft()) return f as any as Right<B>;
-    return this.map(f.value);
+  chain<N, X>(f: (x: T) => Either<N, X>): Either<never, X> {
+    return f(this.value) as Either<never, X>;
   }
 }
 
-/** Returns a new left. */
-const left = <T>(x: T): Left<T> => new Left(x);
+/** Returns a new Right with value `x` of type `T`. */
+const right = <T>(x: T) => new Right(x);
 
-/** Returns a new right. */
-const right = <T>(x: T): Right<T> => new Right(x);
-/**
- * Errors in Winnow are classified by type.
- *  * `lexical-error` - an error during scanning.
- *  * `syntax-error` - an error during parsing.
- *  * `type-error` - an error during type-checking.
- *  * `runtime-error` - an error during execution.
- *  * `resolver-error` - an error during resolution.
- *  * `environment-error` - an error during environment lookup.
- */
+enum TOKEN_TYPE {
+  // Utility tokens
+  END,
+  ERROR,
+  EMPTY,
+  // Paired Delimiters
+  LEFT_PAREN,
+  RIGHT_PAREN,
+  LEFT_BRACE,
+  RIGHT_BRACE,
+  LEFT_BRACKET,
+  RIGHT_BRACKET,
+  // Single Delimiters
+  SEMICOLON,
+  COLON,
+  DOT,
+  COMMA,
+  // Operator Delimiters
+  PLUS,
+  MINUS,
+  STAR,
+  SLASH,
+  CARET,
+  PERCENT,
+  BANG,
+  AMPERSAND,
+  TILDE,
+  VBAR,
+  EQUAL,
+  LESS,
+  GREATER,
+  LESS_EQUAL,
+  GREATER_EQUAL,
+  BANG_EQUAL,
+  EQUAL_EQUAL,
+  PLUS_PLUS,
+  MINUS_MINUS,
+  STAR_STAR,
+  // Vector Operators
+  DOT_ADD,
+  DOT_STAR,
+  DOT_MINUS,
+  DOT_CARET,
+  AT,
+  // Matrix Operators
+  POUND_PLUS, // '#+'
+  POUND_MINUS, // '#-
+  POUND_STAR, // '#*'
+  // Literals
+  SYMBOL,
+  STRING,
+  BOOLEAN,
+  INTEGER,
+  FLOAT,
+  FRACTION,
+  SCIENTIFIC,
+  BIG_NUMBER,
+  FALSE,
+  TRUE,
+  NAN,
+  INF,
+  NIL,
+  NUMERIC_CONSTANT,
+  ALGEBRAIC,
+  // Keyword Tokens
+  AND,
+  OR,
+  NOT,
+  NAND,
+  XOR,
+  XNOR,
+  NOR,
+  IF,
+  ELSE,
+  FN,
+  LET,
+  VAR,
+  RETURN,
+  WHILE,
+  FOR,
+  CLASS,
+  PRINT,
+  SUPER,
+  THIS,
+  REM,
+  MOD,
+  DIV,
+}
+
+type NumberTokenType =
+  | TOKEN_TYPE.INTEGER
+  | TOKEN_TYPE.FLOAT
+  | TOKEN_TYPE.BIG_NUMBER
+  | TOKEN_TYPE.SCIENTIFIC
+  | TOKEN_TYPE.FRACTION;
+
 type ErrorType =
   | "lexical-error"
   | "syntax-error"
   | "type-error"
   | "runtime-error"
-  | "resolver-error"
-  | "environment-error";
+  | "environment-error"
+  | "resolver-error";
 
-class Erratum extends Error {
+/** An object corresponding to an error in Winnow. */
+class Err extends Error {
+  /** This error's message. */
   message: string;
-  errorType: ErrorType;
-  phase: string;
-  line: number;
-  column: number;
-  constructor(
-    message: string,
-    errorType: ErrorType,
-    phase: string,
-    line: number,
-    column: number
-  ) {
+  /** This error's type. */
+  $type: ErrorType;
+  /** The line where this error occurred. */
+  $line: number;
+  /** The column where this error occurred. */
+  $column: number;
+  constructor(message: string, type: ErrorType, line: number, column: number) {
     super(message);
     this.message = message;
-    this.errorType = errorType;
-    this.phase = phase;
-    this.line = line;
-    this.column = column;
+    this.$type = type;
+    this.$line = line;
+    this.$column = column;
   }
-  report() {
-    return formattedError(
-      this.message,
-      this.phase,
-      this.errorType,
-      this.line,
-      this.column
-    );
+  toString() {
+    return this.message;
   }
 }
 
-/** Ensures all errors have the same format. */
-function formattedError(
-  message: string,
-  phase: string,
-  errorType: ErrorType,
-  line: number,
-  column: number
-) {
-  let moduleName = "module";
-  switch (errorType) {
-    case "lexical-error":
-      moduleName = "scanner";
-      break;
-    case "environment-error":
-      moduleName = "environment";
-      break;
-    case "resolver-error":
-      moduleName = "resolver";
-      break;
-    case "runtime-error":
-      moduleName = "interpreter";
-      break;
-    case "syntax-error":
-      moduleName = "parser";
-      break;
-    case "type-error":
-      moduleName = "typechecker";
-  }
-  return `${errorType.toUpperCase()}.\nWhile ${phase}, an error occurred on\nline ${line}, column ${column}.\nReporting from the ${moduleName}:\n${message}`;
-}
-
-/** Returns a new error making function. */
 const errorFactory =
-  (errtype: ErrorType) => (message: string, phase: string, token: Token) =>
-    new Erratum(message, errtype, phase, token.line, token.column);
-
-/** Returns a new lexical error. A lexical error is raised if an error occured during scanning. */
+  (type: ErrorType) => (message: string, line: number, column: number) =>
+    new Err(message, type, line, column);
 const lexicalError = errorFactory("lexical-error");
-
-/** Returns a new syntax error. A syntax error is raised if an error occured during parsing. */
 const syntaxError = errorFactory("syntax-error");
-
-/** Returns a new runtime error. A runtime error is raised if an error occured during interpretation. */
+const typeError = errorFactory("type-error");
 const runtimeError = errorFactory("runtime-error");
-
-/** Returns a new environment error. An environment error is raised if an error occured during an environment lookup. */
-const envError = errorFactory("environment-error");
-
-/** Returns a new resolver error. A resolver error is raised if an error occured during resolution. */
+const environmentError = errorFactory("environment-error");
 const resolverError = errorFactory("resolver-error");
 
-/** Returns a tuple. */
-function tuple<T extends any[]>(...data: T) {
-  return data;
+/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
+class Fraction {
+  /** The numerator of this fraction. */
+  $n: number;
+  /** The denominator of this fraction. */
+  $d: number;
+  constructor(n: number, d: number) {
+    this.$n = n;
+    this.$d = d;
+  }
 }
 
 /**
- * All tokens generated by Winnow have a TokenType.
- * The TokenType categorizes the token.
+ * Returns a new Fraction. Both arguments must be integers.
+ * If the arguments are not integers, they will be floored.
+ * @param n The numerator of this fraction (must be an integer).
+ * @param d The denominator of this fraction (must be an integer).
+ * @returns A new instance of a fraction.
  */
-enum TokenType {
-  // single-character tokens
-  left_paren,
-  right_paren,
-  left_brace,
-  right_brace,
-  left_bracket,
-  right_bracket,
-  comma,
-  dot,
-  minus,
-  plus,
-  semicolon,
-  slash,
-  star,
-  colon,
-  ampersand,
-  caret,
-  percent,
-  vbar,
-
-  // one or two character tokens
-  bang,
-  bang_equal,
-  equal,
-  equal_equal,
-  greater,
-  greater_equal,
-  less,
-  less_equal,
-
-  // literals
-  identifier,
-  string,
-
-  // numeric values
-  integer,
-  float,
-  fraction,
-  scientific,
-
-  // keywords
-  and,
-  class,
-  else,
-  false,
-  for,
-  if,
-  nil,
-  or,
-  print,
-  return,
-  super,
-  this,
-  true,
-  var,
-  while,
-  nan,
-  inf,
-  pi,
-  e,
-  let,
-  fn,
-  rem,
-  mod,
-  div,
-  nor,
-  xor,
-  xnor,
-  not,
-  nand,
-
-  // utility tokens
-  error,
-  eof,
-  empty,
+function frac(n: number, d: number) {
+  return new Fraction(Math.floor(n), Math.floor(d));
 }
 
-type NumberTokenType =
-  | TokenType.integer
-  | TokenType.float
-  | TokenType.fraction
-  | TokenType.scientific;
+/** An object corresponding to a number of the form `m x 10^n`. */
+class Scientific_Number {
+  /** The mantissa in `m x 10^n`. */
+  $m: number;
+  /** The exponent (an integer) in `m x 10^n` */
+  $n: number;
+  constructor(m: number, n: number) {
+    this.$m = m;
+    this.$n = Math.floor(n);
+  }
+}
 
-type Primitive =
-  | string
+/**
+ * Returns a new instance of a Scientific_Number.
+ * @param m The mantissa in `m x 10^n`.
+ * @param n The exponent (an integer) in `m x 10^n`.
+ * @returns A new scientific number (m x 10^n).
+ */
+function scinum(m: number, n: number) {
+  return new Scientific_Number(m, Math.floor(n));
+}
+
+/** A value native to Winnow. */
+type PRIMITIVE =
   | number
-  | boolean
+  | string
   | null
-  | Erratum
-  | [Primitive, Primitive];
+  | boolean
+  | bigint
+  | Scientific_Number
+  | Fraction
+  | Err;
+
+/** Returns true iff `x` is a Scientific_Number. */
+function isScientificNumber(x: any): x is Scientific_Number {
+  return x instanceof Scientific_Number;
+}
+
+/** Returns true iff `x` is null. */
+function isNull(x: any): x is null {
+  return x === null;
+}
+
+/** Returns true iff `x` is a Boolean value. */
+function isBoolean(x: any): x is boolean {
+  return typeof x === "boolean";
+}
+
+/** Returns true iff `x` is a number value. */
+function isNumber(x: any): x is number {
+  return typeof x === "number";
+}
+
+/** Returns true iff `x` is a string value. */
+function isString(x: any): x is string {
+  return typeof x === "string";
+}
 
 /** An object corresponding to a token in Winnow. */
-class Token<T extends TokenType = TokenType, L extends Primitive = Primitive> {
+class Token<
+  T extends TOKEN_TYPE = TOKEN_TYPE,
+  L extends PRIMITIVE = PRIMITIVE
+> {
   /** This token's type. */
-  tokenType: T;
-
-  /** This token's lexeme. */
-  lexeme: string;
-
-  /** The line where this token was recognized. */
-  line: number;
-
-  /** The column where this token was recognized. */
-  column: number;
-
-  /** This token's literal value, if any. */
-  literal: L = null as any;
-
-  constructor(tokenType: T, lexeme: string, line: number, column: number) {
-    this.tokenType = tokenType;
-    this.lexeme = lexeme;
-    this.line = line;
-    this.column = column;
+  $type: T;
+  /** This tokene's lexeme. */
+  $lexeme: string;
+  /** This token's literal value, if any (defaults to null). */
+  $literal: L = null as any;
+  /** The line where this token was first encountered. */
+  $line: number;
+  /** The column where this token was first encountered. */
+  $column: number;
+  constructor(type: T, lexeme: string, line: number, column: number) {
+    this.$type = type;
+    this.$lexeme = lexeme;
+    this.$line = line;
+    this.$column = column;
+  }
+  copy() {
+    return new Token(this.$type, this.$lexeme, this.$line, this.$column);
+  }
+  /**
+   * Returns a copy of this token with a new token type.
+   * @param tokenType The new token type.
+   * @returns A copy of this token with the given token type.
+   */
+  withType<X extends TOKEN_TYPE>(tokenType: X) {
+    const out = this.copy();
+    out.$type = tokenType as any;
+    return out as any as Token<X, L>;
+  }
+  /**
+   * Returns a copy of this token with a new lexeme.
+   * @param lexeme The new lexeme, a string value.
+   * @returns A copy of this token with the given string as its lexeme.
+   */
+  withLexeme(lexeme: string) {
+    const out = this.copy();
+    out.$lexeme = lexeme;
+    return out;
+  }
+  /**
+   * Returns a copy of this token with a new literal value.
+   * @param primitive The new literal value, a Primitive.
+   * @returns A copy of this token with the given literal as its literal.
+   */
+  withLiteral<L2 extends PRIMITIVE>(primitive: L2) {
+    const out = this.copy();
+    out.$literal = primitive;
+    return out as any as Token<T, L2>;
+  }
+  /**
+   * Returns a copy of this token with a new line number.
+   * @param line The new line number.
+   * @returns A copy of this token with the given line as its line number.
+   */
+  withLine(line: number) {
+    const out = this.copy();
+    out.$line = line;
+    return out;
+  }
+  /**
+   * Returns a copy of this token with a new column number.
+   * @param column The new column number.
+   * @returns A copy of this token with the given column as its column number.
+   */
+  withColumn(column: number) {
+    const out = this.copy();
+    out.$column = column;
+    return out;
   }
 
-  /** Sets this token's literal value to the given primitive, and returns this. */
-  lit(value: L) {
-    this.literal = value;
-    return this;
+  isType<K extends T>(type: K): this is Token<K> {
+    return this.$type === type;
   }
 
-  /** Returns true if this token is of the given type. */
-  isType(type: TokenType) {
-    return this.tokenType === type;
+  /**
+   * Returns true if and only if this token is a
+   * right-delimiter token. That is, either a `)`,
+   * `]`, or `}`.
+   * @returns a boolean
+   */
+  isRightDelimiter() {
+    return (
+      this.$type === TOKEN_TYPE.RIGHT_PAREN ||
+      this.$type === TOKEN_TYPE.RIGHT_BRACE ||
+      this.$type === TOKEN_TYPE.RIGHT_BRACKET
+    );
   }
 
-  /** Returns a string representation of this token. */
+  static empty: Token<TOKEN_TYPE, any> = new Token(
+    TOKEN_TYPE.EMPTY,
+    "",
+    -1,
+    -1
+  );
+  static end: Token<TOKEN_TYPE, any> = new Token(TOKEN_TYPE.END, "END", -1, -1);
+  
   toString() {
-    const type = TokenType[this.tokenType];
-    const lexeme = this.lexeme;
-    const line = this.line;
-    const lit = this.literal;
-    return `{Type: ${type}, Lexeme: ${lexeme}, Line: ${line}, Literal: ${lit}}`;
+    return `{token: ${TOKEN_TYPE[this.$type]}, lexeme: ${this.$lexeme}, line: ${this.$line}, column: ${this.$column}, literal: ${this.$literal}}`
   }
-
-  isErrorToken(): this is Token<TokenType.error, Erratum> {
-    return this.isType(TokenType.error);
-  }
-
-  static empty = new Token(TokenType.empty, "", -1, -1);
-  static end = new Token(TokenType.eof, "", -1, -1);
 }
 
-/** Returns a new token. */
-const newToken = (
-  type: TokenType,
+/**
+ * Returns a new Winnow token.
+ * @param type The new token's type.
+ * @param lexeme The new token's lexeme.
+ * @param line The line where this token was first encountered.
+ * @param column The column where this token was first encountered.
+ * @returns A new instance of Token.
+ */
+function token<X extends TOKEN_TYPE>(
+  type: X,
   lexeme: string,
   line: number,
   column: number
-) => new Token(type, lexeme, line, column);
-
-/** Returns true if the string `char` is a Latin or Greek character. */
-function isLatinGreek(char: string) {
-  return /^[a-zA-Z_$\u00C0-\u02AF\u0370-\u03FF\u2100-\u214F]$/.test(char);
+): Token<X> {
+  return new Token(type, lexeme, line, column);
 }
 
-/** Returns true if the given string `char` is within the unicode range `∀-⋿`. Else, returns false. */
-function isMathSymbol(char: string) {
-  return /^[∀-⋿]/u.test(char);
-}
-
-/** Returns true if the given string `char` is a digit. Else, returns false. */
-function isDigit(char: string) {
-  return "0" <= char && char <= "9";
-}
-
-/** Returns true if the given string char is a hex digit. Else, returns false. */
-function isHexDigit(char: string) {
-  return (
-    ("0" <= char && char <= "9") ||
-    ("a" <= char && char <= "f") ||
-    ("A" <= char && char <= "F")
-  );
-}
-
-/** Returns true if the given string char is an octal digit. Else, returns false. */
-function isOctalDigit(char: string) {
-  return "0" <= char && char <= "7";
-}
-
-/** Returns true if the given string char is a binary digit. Else, returns false. */
-function isBinaryDigit(char: string) {
-  return char === "0" || char === "1";
-}
-
-/** Returns true if the given string `char` is a Latin/Greek character or a math symbol. Else, returns false. */
-function isValidName(char: string) {
-  return isLatinGreek(char) || isMathSymbol(char);
-}
-
-export function lexical(source: string) {
-  /** A counter to keep track of which line we're on. */
-  let $line = 1;
-
-  /** A counter to keep track of which column we're on. */
-  let $column = 1;
-
-  /** A pointer to where the scanner first starts. */
-  let $start = 0;
-
-  /** A pointer to where the scanner currently is.  */
-  let $current = 0;
-
-  /** A stateful variable that binds to either an error object or null. If no error occurs during scanning, then this variable must be null. If this variable is not null, then an error must have occurred. */
-  let $error: Erratum | null = null;
-
-  /** Returns the character the scanner is currently considering.  */
-  const peek = () => source[$current];
-
-  /** Returns the next character the scanner will consider. */
-  const peekNext = () => (atEnd() ? "" : source[$current + 1]);
+export function lexical(code: string) {
+  /**
+   * A variable corresponding to the
+   * current line the scanner's on.
+   */
+  let $line: number = 1;
 
   /**
-   * Returns the character
-   * n places ahead of current.
+   * A variable corresponding to the
+   * current column the scanner's on.
    */
-  const lookup = (n: number) => (atEnd() ? "" : source[$current + n]);
+  let $column: number = 1;
 
-  /** Returns a substring of the source, starting from where the scanner first started and ending at the current character. */
-  const slice = () => source.slice($start, $current);
+  /**
+   * A pointer to the first character
+   * of the lexeme currently being
+   * scanned.
+   */
+  let $start: number = 0;
 
-  /** Returns true if the scanner has reached the end of input. */
-  const atEnd = () => $current >= source.length;
+  /**
+   * A pointer to the character currently
+   * being scanned.
+   */
+  let $current: number = 0;
 
-  /** Returns a new token. */
-  const makeToken = (tokenType: TokenType, lexeme: string = "") => {
-    const lex = lexeme ? lexeme : slice();
-    const out = newToken(tokenType, lex, $line, $column);
-    return out;
+  /**
+   * Error indicator defaulting to null.
+   * If initialized, then the scanning will cease.
+   */
+  let $error: null | Err = null;
+
+  /**
+   * Returns true if the scanner has reached the end
+   * of code.
+   */
+  const atEnd = (): boolean => $current >= code.length || !isNull($error);
+
+  /**
+   * Consumes and returns the next character
+   * in the code.
+   */
+  const tick = (): string => code[$current++];
+
+  /**
+   * Returns the code substring from $start to $current.
+   */
+  const slice = (): string => code.slice($start, $current);
+
+  /**
+   * Returns a new token.
+   * @param type The token type.
+   * @param lexeme The token's lexeme.
+   * @returns A new Token.
+   */
+  const tkn = (type: TOKEN_TYPE, lexeme: string = ""): Token => {
+    lexeme = lexeme ? lexeme : slice();
+    return token(type, lexeme, $line, $column);
   };
 
-  /** Returns a new error token with the given message. */
-  const errorToken = (message: string) => {
-    const err = newToken(TokenType.error, message, $line, $column);
-    const newError = lexicalError(message, "scanning", err);
-    $error = newError;
-    err.lit(newError);
-    return err;
+  /**
+   * Returns an error token. If called, sets the
+   * mutable $error variable, causing scanning to
+   * cease.
+   * @param message The error message to accompany
+   * the Err object.
+   * @returns A new Token of type TOKEN_TYPE.ERROR.
+   */
+  const errorToken = (message: string): Token<TOKEN_TYPE.ERROR, Err> => {
+    const errTkn = token(TOKEN_TYPE.ERROR, "", $line, $column);
+    $error = lexicalError(message, $line, $column);
+    return token(TOKEN_TYPE.ERROR, "", $line, $column).withLiteral($error);
   };
 
-  /** Returns the current character and moves the scanner forward by one character. */
-  const tick = () => source[$current++];
+  /**
+   * Returns the current character being scanned WITHOUT
+   * moving the scanner forward.
+   * @returns A 1-character string.
+   */
+  const peek = (): string => (atEnd() ? "" : code[$current]);
 
-  /** Skips all whitespaces. */
-  const skipWhitespace = () => {
-    while (true) {
-      const c = peek();
-      switch (c) {
+  /**
+   * Returns the character just ahead of the current character
+   * WITHOUT moving the scanner forward.
+   * @returns A 1-character string.
+   */
+  const peekNext = (): string => (atEnd() ? "" : code[$current + 1]);
+
+  /**
+   * Returns the character `by` places
+   * ahead of the current character
+   * WITHOUT moving the scanner forward.
+   * @param by The number of places to look ahead.
+   * @returns A 1-character string.
+   */
+  const lookup = (by: number): string => (atEnd() ? "" : code[$current + by]);
+
+  /**
+   * If the provided expected string
+   * matches, increments $current (moving
+   * the scanner forward) and returns true.
+   * Otherwise returns false without increment (
+   * scanner doesn't move forward).
+   * @param expectedChar A 1-character string corresponding
+   * to the expected character.
+   * @returns A boolean.
+   */
+  const match = (expectedChar: string): boolean => {
+    if (atEnd()) return false;
+    if (code[$current] !== expectedChar) return false;
+    $current++;
+    return true;
+  };
+
+  /**
+   * Returns true if the current peek (the character
+   * pointed at by `$current`) matches the provided
+   * number. Otherwise, returns false.
+   * @param char A 1-char string corresponding
+   * to the expected character.
+   * @returns A boolean.
+   */
+  const peekIs = (char: string): boolean => peek() === char;
+
+  /**
+   * Consumes all whitespace while moving
+   * the scanner's `$current` pointer
+   * forward.
+   * @returns Nothing.
+   */
+  const skipWhitespace = (): void => {
+    while (!atEnd()) {
+      const char: string = peek();
+      switch (char) {
         case " ":
         case "\r":
         case "\t":
@@ -453,22 +543,266 @@ export function lexical(source: string) {
     }
   };
 
-  /** If the current character matches the expectedChar, moves the scanner foward and returns true. Otherwise, returns false. */
-  const match = (expectedChar: string) => {
-    if (atEnd()) {
-      return false;
-    } else if (source[$current] !== expectedChar) {
-      return false;
+  /**
+   * Returns true if the given character is a Latin or
+   * Greek character, false otherwise.
+   * @param char A 1-character string.
+   * @returns A boolean.
+   */
+  const isLatinGreekChar = (char: string): boolean =>
+    /^[a-zA-Z_$\u00C0-\u02AF\u0370-\u03FF\u2100-\u214F]$/.test(char);
+
+  /**
+   * Returns true if the given character is a Unicode
+   * math symbol, false otherwise.
+   * @param char A 1-character string.
+   * @returns A boolean.
+   */
+  const isMathSymbol = (char: string): boolean => /^[∀-⋿]/u.test(char);
+
+  /**
+   * Returns true if the given character is a valid
+   * character to the start of a name, false
+   * otherwise.
+   * @param char A 1-char string.
+   * @returns A boolean.
+   */
+  const isValidNameChar = (char: string) =>
+    isLatinGreekChar(char) || isMathSymbol(char);
+
+  /**
+   * Returns true if the given `char` is a digit.
+   * @param char A 1-char string.
+   * @returns A boolean.
+   */
+  const isDigit = (char: string) => "0" <= char && char <= "9";
+
+  const dictionary: Record<string, () => Token> = {
+    this: () => tkn(TOKEN_TYPE.THIS),
+    super: () => tkn(TOKEN_TYPE.SUPER),
+    class: () => tkn(TOKEN_TYPE.CLASS),
+    false: () => tkn(TOKEN_TYPE.FALSE).withLiteral(false),
+    true: () => tkn(TOKEN_TYPE.TRUE).withLiteral(true),
+    NaN: () => tkn(TOKEN_TYPE.NAN).withLiteral(NaN),
+    Inf: () => tkn(TOKEN_TYPE.INF).withLiteral(Infinity),
+    return: () => tkn(TOKEN_TYPE.RETURN),
+    while: () => tkn(TOKEN_TYPE.WHILE),
+    for: () => tkn(TOKEN_TYPE.FOR),
+    let: () => tkn(TOKEN_TYPE.LET),
+    var: () => tkn(TOKEN_TYPE.VAR),
+    fn: () => tkn(TOKEN_TYPE.FN),
+    if: () => tkn(TOKEN_TYPE.IF),
+    else: () => tkn(TOKEN_TYPE.ELSE),
+    print: () => tkn(TOKEN_TYPE.PRINT),
+    rem: () => tkn(TOKEN_TYPE.REM),
+    mod: () => tkn(TOKEN_TYPE.MOD),
+    div: () => tkn(TOKEN_TYPE.DIV),
+    nil: () => tkn(TOKEN_TYPE.NIL),
+    and: () => tkn(TOKEN_TYPE.AND),
+    or: () => tkn(TOKEN_TYPE.OR),
+    nor: () => tkn(TOKEN_TYPE.NOR),
+    xor: () => tkn(TOKEN_TYPE.XOR),
+    xnor: () => tkn(TOKEN_TYPE.XNOR),
+    not: () => tkn(TOKEN_TYPE.NOT),
+    nand: () => tkn(TOKEN_TYPE.NAND),
+  };
+
+  const wordToken = () => {
+    while ((isValidNameChar(peek()) || isDigit(peek())) && !atEnd()) {
+      tick();
+    }
+    const word = slice();
+    if (dictionary[word]) {
+      return dictionary[word]();
     } else {
-      $current++;
-      return true;
+      return tkn(TOKEN_TYPE.SYMBOL);
     }
   };
 
-  /** Returns a string literal token. */
-  const stringLiteral = () => {
-    while (peek() !== `"` && !atEnd()) {
-      if (peek() === `\n`) {
+  const isHexDigit = (char: string) =>
+    ("0" <= char && char <= "9") ||
+    ("a" <= char && char <= "f") ||
+    ("A" <= char && char <= "F");
+
+  const isOctalDigit = (char: string) => "0" <= char && char <= "7";
+
+  /**
+   * Scans and returns a BIG_NUMBER token.
+   * @returns A Token of type BIG_NUMBER.
+   */
+  const bigNumberToken = () => {
+    while (isDigit(peek()) && !atEnd()) tick();
+    const n = slice().replace("#", "");
+    return tkn(TOKEN_TYPE.BIG_NUMBER).withLiteral(BigInt(n));
+  };
+
+  /**
+   * Scans a binary number token.
+   * @returns A Token of type INTEGER.
+   */
+  const binaryNumberToken = () => {
+    if (!(peekIs("0") || peekIs("1"))) {
+      return errorToken(`Expected binary digits after “0b”`);
+    }
+    while ((peekIs("0") || peekIs("1")) && !atEnd()) {
+      tick();
+    }
+    const numberString = slice().replace("0b", "");
+    const integerValue = Number.parseInt(numberString, 2);
+    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+  };
+
+  /**
+   * Scans an octal number token.
+   * @returns A Token of type INTEGER.
+   */
+  const octalNumberToken = () => {
+    if (!isOctalDigit(peek())) {
+      return errorToken("Expected octal digits after");
+    }
+    while (isOctalDigit(peek()) && !atEnd()) {
+      tick();
+    }
+    const numberString = slice().replace("0o", "");
+    const integerValue = Number.parseInt(numberString, 8);
+    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+  };
+
+  /**
+   * Scans a hexadecimal number token.
+   * @returns A Token of type INTEGER.
+   */
+  const hexNumberToken = () => {
+    if (!isHexDigit(peek())) {
+      return errorToken("Expected hexadecimals after 0x");
+    }
+    while (isHexDigit(peek()) && !atEnd()) {
+      tick();
+    }
+    const numberString = slice().replace("0x", "");
+    const integerValue = Number.parseInt(numberString, 16);
+    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+  };
+
+  const numTkn = (
+    numberString: string,
+    type: NumberTokenType,
+    hasSeparators: boolean
+  ) => {
+    const n = hasSeparators ? numberString.replaceAll("_", "") : numberString;
+    switch (type) {
+      case TOKEN_TYPE.INTEGER: {
+        const num = Number.parseInt(n);
+        if (num > Number.MAX_SAFE_INTEGER) {
+          return errorToken(
+            `Encountered an integer overflow. Consider rewriting “${numberString}” as a bignumber: “#${numberString}”. If “${numberString}” is to be used symbolically, consider rewriting “${numberString}” as a scientific number.`
+          );
+        } else {
+          return tkn(type).withLiteral(num);
+        }
+      }
+      case TOKEN_TYPE.FLOAT: {
+        const num = Number.parseFloat(n);
+        if (num > Number.MAX_VALUE) {
+          return errorToken(
+            `Encountered a floating point overflow. Consider rewriting "${n}" as a fraction or bigfraction. If "${n}" is to be used symbolically, consider rewriting "${n}" as a scientific number.`
+          );
+        }
+      }
+      case TOKEN_TYPE.FRACTION: {
+        const [a, b] = n.split("|");
+        const N = Number.parseInt(a);
+        const D = Number.parseInt(b);
+        return tkn(type).withLiteral(frac(N, D));
+      }
+      case TOKEN_TYPE.SCIENTIFIC: {
+        const [a, b] = n.split("E");
+        const base = Number.parseFloat(a);
+        const exponent = Number.parseInt(b);
+        return tkn(type).withLiteral(scinum(base, exponent));
+      }
+    }
+    return errorToken(`Unrecognized number: "${n}".`);
+  };
+
+  const numberToken = (initialType: NumberTokenType): Token => {
+    let type = initialType;
+    let hasSeparators = false;
+    while (isDigit(peek()) && !atEnd()) {
+      tick();
+    }
+
+    // handle number with separators
+    if (peekIs("_") && isDigit(peekNext())) {
+      tick(); // eat the '_'
+      hasSeparators = true;
+      let digits = 0;
+      while (isDigit(peek()) && !atEnd()) {
+        tick();
+        digits++;
+        if (peekIs("_") && isDigit(peekNext())) {
+          if (digits === 3) {
+            tick();
+            digits = 0;
+          } else {
+            return errorToken(
+              'Expected 3 ASCII digits before the separator "_"'
+            );
+          }
+        }
+      }
+      if (digits !== 3) {
+        return errorToken('Expected 3 ASCII digits before the separator "_"');
+      }
+    }
+
+    // handle floating point numbers
+    if (peekIs(".") && isDigit(peekNext())) {
+      tick();
+      type = TOKEN_TYPE.FLOAT;
+      while (isDigit(peek()) && !atEnd()) {
+        tick();
+      }
+    }
+
+    // handle fractions
+    if (peekIs("|")) {
+      if (type !== TOKEN_TYPE.INTEGER) {
+        return errorToken('Expected an integer before "|"');
+      }
+      type = TOKEN_TYPE.FRACTION;
+      tick();
+      while (isDigit(peek()) && !atEnd()) {
+        tick();
+      }
+      return numTkn(slice(), type, hasSeparators);
+    }
+
+    if (peekIs("E")) {
+      if (isDigit(peekNext())) {
+        type = TOKEN_TYPE.SCIENTIFIC;
+        tick();
+        while (isDigit(peek())) tick();
+      } else if (
+        (peekNext() === "+" || peekNext() === "-") &&
+        isDigit(lookup(2))
+      ) {
+        type = TOKEN_TYPE.SCIENTIFIC;
+        tick();
+        tick();
+        while (isDigit(peek())) tick();
+      }
+    }
+    return numTkn(slice(), type, hasSeparators);
+  };
+
+  /**
+   * Scans for a string token.
+   * @returns A Token.
+   */
+  const stringToken = () => {
+    while (peek() !== '"' && !atEnd()) {
+      if (peek() === "\n") {
         $line++;
         $column = 0;
       } else {
@@ -476,508 +810,196 @@ export function lexical(source: string) {
       }
       tick();
     }
-    if (atEnd()) {
-      return errorToken("Unterminated string");
-    }
+    if (atEnd()) return errorToken("Unterminated string");
     tick();
     const lex = slice().slice(1, -1);
-    return makeToken(TokenType.string, lex);
+    return tkn(TOKEN_TYPE.STRING, lex);
   };
 
-  /** Returns either an identifier or a keyword token. */
-  const word = () => {
-    while ((isValidName(peek()) || isDigit(peek())) && !atEnd()) {
-      tick();
-    }
-    const string = slice();
-    switch (string) {
-      case "this":
-        return makeToken(TokenType.this);
-      case "super":
-        return makeToken(TokenType.super);
-      case "class":
-        return makeToken(TokenType.class);
-      case "false":
-        return makeToken(TokenType.false);
-      case "true":
-        return makeToken(TokenType.true);
-      case "nan":
-        return makeToken(TokenType.nan);
-      case "inf":
-        return makeToken(TokenType.inf);
-      case "pi":
-        return makeToken(TokenType.pi);
-      case "e":
-        return makeToken(TokenType.e);
-      case "return":
-        return makeToken(TokenType.return);
-      case "while":
-        return makeToken(TokenType.while);
-      case "for":
-        return makeToken(TokenType.for);
-      case "let":
-        return makeToken(TokenType.let);
-      case "var":
-        return makeToken(TokenType.var);
-      case "fn":
-        return makeToken(TokenType.fn);
-      case "if":
-        return makeToken(TokenType.if);
-      case "else":
-        return makeToken(TokenType.else);
-      case "print":
-        return makeToken(TokenType.print);
-      case "rem":
-        return makeToken(TokenType.rem);
-      case "mod":
-        return makeToken(TokenType.mod);
-      case "div":
-        return makeToken(TokenType.div);
-      case "nil":
-        return makeToken(TokenType.nil);
-      case "and":
-        return makeToken(TokenType.and);
-      case "or":
-        return makeToken(TokenType.or);
-      case "nor":
-        return makeToken(TokenType.nor);
-      case "xor":
-        return makeToken(TokenType.xor);
-      case "xnor":
-        return makeToken(TokenType.xnor);
-      case "not":
-        return makeToken(TokenType.not);
-      case "nand":
-        return makeToken(TokenType.nand);
-    }
-    return makeToken(TokenType.identifier);
-  };
-
-  /** Returns a binary number token. */
-  const binaryNumber = () => {
-    if (!isBinaryDigit(peek())) {
-      return errorToken("Expected binary digits after 0b");
-    }
-    while ((peek() === "0" || peek() === "1") && !atEnd()) {
-      tick();
-    }
-    const s = slice().replace("0b", "");
-    const n = Number.parseInt(s, 2);
-    return makeToken(TokenType.integer, `${n}`).lit(n);
-  };
-
-  /** Returns an octal number token. */
-  const octalNumber = () => {
-    if (!isOctalDigit(peek())) {
-      return errorToken("Expected octal digits after 0o");
-    }
-    while (isOctalDigit(peek()) && !atEnd()) {
-      tick();
-    }
-    const s = slice().replace("0o", "");
-    const n = Number.parseInt(s, 8);
-    return makeToken(TokenType.integer).lit(n);
-  };
-
-  /** Returns a hexadecimal number token. */
-  const hexNumber = () => {
-    if (!isHexDigit(peek())) {
-      return errorToken("Expected hexadecimals after 0x");
-    }
-    while (isHexDigit(peek()) && !atEnd()) {
-      tick();
-    }
-    const s = slice().replace("0x", "");
-    const n = Number.parseInt(s, 16);
-    return makeToken(TokenType.integer).lit(n);
-  };
-
-  const ntoken = (
-    numberString: string,
-    type: NumberTokenType,
-    hasSeparators: boolean
-  ) => {
-    const n = hasSeparators ? numberString.replaceAll("_", "") : numberString;
-    switch (type) {
-      case TokenType.integer: {
-        const num = Number.parseInt(n);
-        return makeToken(TokenType.integer).lit(num);
-      }
-      case TokenType.float: {
-        const num = Number.parseFloat(n);
-        return makeToken(TokenType.float).lit(num);
-      }
-      case TokenType.scientific: {
-        const [a, b] = n.split("E");
-        const base = Number.parseFloat(a);
-        const exponent = Number.parseInt(b);
-        return makeToken(type).lit(tuple(base, exponent));
-      }
-      case TokenType.fraction: {
-        const [a, b] = n.split("|");
-        const N = Number.parseInt(a);
-        const D = Number.parseInt(b);
-        return makeToken(type).lit(tuple(N, D));
-      }
-      default: {
-        return errorToken(`Unknown number type: "${numberString}"`);
-      }
-    }
-  };
-
-  /** Returns a number token. */
-  const numberToken = (initialType: NumberTokenType) => {
-    let type = initialType;
-    let scannedSeparators = false;
-    while (isDigit(peek()) && !atEnd()) {
-      tick();
-    }
-
-    // Handle numbers with separators.
-    if (peek() === "_" && isDigit(peekNext())) {
-      tick();
-      scannedSeparators = true;
-      let digits = 0;
-      while (isDigit(peek()) && !atEnd()) {
-        tick();
-        digits++;
-        if (peek() === "_" && isDigit(peekNext())) {
-          if (digits === 3) {
-            tick();
-            digits = 0;
-          } else {
-            return errorToken("There must be 3 digits before the separator _");
-          }
-        }
-      }
-      if (digits !== 3) {
-        return errorToken("There must be 3 digits before the separator _");
-      }
-    }
-
-    // Handle floating point numbers.
-    if (peek() === "." && isDigit(peekNext())) {
-      tick();
-      type = TokenType.float;
-      while (isDigit(peek()) && !atEnd()) {
-        tick();
-      }
-    }
-
-    // Handle fractions.
-    // Fractions take the form `[int] | [int]`
-    if (peek() === "|") {
-      if (type !== TokenType.integer) {
-        return errorToken("Expected an integer before '|'");
-      }
-      type = TokenType.fraction;
-      console.log("hit");
-      tick();
-      while (isDigit(peek()) && !atEnd()) {
-        tick();
-      }
-      return ntoken(slice(), type, scannedSeparators);
-    }
-
-    // Handle scientific numbers
-    if (peek() === "E") {
-      if (isDigit(peekNext())) {
-        type = TokenType.scientific;
-        tick();
-        while (isDigit(peek())) {
-          tick();
-        }
-      } else if (
-        (peekNext() === "+" || peekNext() === "-") &&
-        isDigit(lookup(2))
-      ) {
-        type = TokenType.scientific;
-        tick(); // eat the 'E'
-        tick(); // eat the '+' or '-'
-        while (isDigit(peek())) tick();
-      }
-    }
-    return ntoken(slice(), type, scannedSeparators);
-  };
-
-  /** The scanning function. */
-  const scan = () => {
+  const scan = (): Token => {
+    // Start by skipping whitespace.
     skipWhitespace();
+
+    // Set the $start and $current pointers
+    // to the same characters.
     $start = $current;
-    if (atEnd()) {
-      return makeToken(TokenType.eof);
-    }
-    const c = tick();
-    if (isValidName(c)) {
-      return word();
-    }
-    if (isDigit(c)) {
-      if (c === "0" && match("b")) {
-        return binaryNumber();
-      } else if (c === "0" && match("o")) {
-        return octalNumber();
-      } else if (c === "0" && match("x")) {
-        return hexNumber();
+
+    // If we've reached the end of the source code,
+    // immediately return an END token.
+    if (atEnd()) return tkn(TOKEN_TYPE.END, "END");
+
+    // Now get the current character and move the
+    // scanner forward.
+    const char = tick();
+
+    // If the character is a valid name starter (a Latin
+    // or Greek character, a unicode math symbol,
+    // an underscore, or a `$`), returns a word token.
+    if (isValidNameChar(char)) return wordToken();
+
+    // If the character is '#' then we have either
+    // a BIG_NUMBER token, or a matrix operator.
+    if (char === "#") {
+      if (isDigit(peek())) {
+        return bigNumberToken();
+      } else if (match("+")) {
+        return tkn(TOKEN_TYPE.POUND_PLUS);
+      } else if (match("-")) {
+        return tkn(TOKEN_TYPE.POUND_MINUS);
+      } else if (match("*")) {
+        return tkn(TOKEN_TYPE.POUND_STAR);
       } else {
-        return numberToken(TokenType.integer);
+        return errorToken('Expected digits after "#".');
       }
     }
-    switch (c) {
-      case "(":
-        return makeToken(TokenType.left_paren);
-      case ")":
-        return makeToken(TokenType.right_paren);
-      case "{":
-        return makeToken(TokenType.left_brace);
-      case "}":
-        return makeToken(TokenType.right_brace);
-      case "[":
-        return makeToken(TokenType.left_bracket);
-      case "]":
-        return makeToken(TokenType.right_bracket);
-      case ":":
-        return makeToken(TokenType.colon);
-      case "|":
-        return makeToken(TokenType.vbar);
-      case "&":
-        return makeToken(TokenType.ampersand);
-      case ";":
-        return makeToken(TokenType.semicolon);
-      case ",":
-        return makeToken(TokenType.comma);
-      case ".":
-        return makeToken(TokenType.dot);
-      case "-":
-        return makeToken(TokenType.minus);
-      case "+":
-        return makeToken(TokenType.plus);
-      case "/":
-        return makeToken(TokenType.slash);
-      case "*":
-        return makeToken(TokenType.star);
-      case "^":
-        return makeToken(TokenType.caret);
-      case "%":
-        return makeToken(TokenType.percent);
-      case "!":
-        return makeToken(match("=") ? TokenType.equal_equal : TokenType.equal);
-      case "=":
-        return makeToken(match("=") ? TokenType.equal_equal : TokenType.equal);
-      case "<":
-        return makeToken(match("=") ? TokenType.less_equal : TokenType.less);
-      case ">":
-        return makeToken(
-          match("=") ? TokenType.greater_equal : TokenType.greater
-        );
-      case `"`:
-        return stringLiteral();
+    // If the character is a digit, then we have
+    // a number token.
+    if (isDigit(char)) {
+      if (char === "0" && match("b")) {
+        return binaryNumberToken();
+      } else if (char === "0" && match("o")) {
+        return octalNumberToken();
+      } else if (char === "0" && match("x")) {
+        return hexNumberToken();
+      } else {
+        return numberToken(TOKEN_TYPE.INTEGER);
+      }
     }
+    switch (char) {
+      case ":":
+        return tkn(TOKEN_TYPE.COLON);
+      case "&":
+        return tkn(TOKEN_TYPE.AMPERSAND);
+      case "~":
+        return tkn(TOKEN_TYPE.TILDE);
+      case "|":
+        return tkn(TOKEN_TYPE.VBAR);
+      case "(":
+        return tkn(TOKEN_TYPE.LEFT_PAREN);
+      case ")":
+        return tkn(TOKEN_TYPE.RIGHT_PAREN);
+      case "[":
+        return tkn(TOKEN_TYPE.LEFT_BRACKET);
+      case "]":
+        return tkn(TOKEN_TYPE.RIGHT_BRACKET);
+      case "{":
+        return tkn(TOKEN_TYPE.LEFT_BRACE);
+      case "}":
+        return tkn(TOKEN_TYPE.RIGHT_BRACE);
+      case ",":
+        return tkn(TOKEN_TYPE.COMMA);
+      case "*":
+        return tkn(TOKEN_TYPE.STAR);
+      case ";":
+        return tkn(TOKEN_TYPE.SEMICOLON);
+      case "%":
+        return tkn(TOKEN_TYPE.PERCENT);
+      case "/":
+        return tkn(TOKEN_TYPE.SLASH);
+      case "^":
+        return tkn(TOKEN_TYPE.CARET);
+      case "!":
+        return tkn(match("=") ? TOKEN_TYPE.BANG_EQUAL : TOKEN_TYPE.BANG);
+      case "<":
+        return tkn(match("=") ? TOKEN_TYPE.LESS_EQUAL : TOKEN_TYPE.LESS);
+      case ">":
+        return tkn(match("=") ? TOKEN_TYPE.GREATER_EQUAL : TOKEN_TYPE.GREATER);
+      case '"':
+        return stringToken();
+      case ".": {
+        if (match("+")) {
+          return tkn(TOKEN_TYPE.DOT_ADD);
+        } else if (match("-")) {
+          return tkn(TOKEN_TYPE.DOT_MINUS);
+        } else if (match("*")) {
+          return tkn(TOKEN_TYPE.DOT_STAR);
+        } else if (match("^")) {
+          return tkn(TOKEN_TYPE.DOT_CARET);
+        } else {
+          return tkn(TOKEN_TYPE.DOT);
+        }
+      }
+      case "-": {
+        if (peek() === "-" && peekNext() === "-") {
+          while (peek() !== "\n" && !atEnd()) {
+            tick();
+          }
+          return Token.empty;
+        } else {
+          return tkn(match("-") ? TOKEN_TYPE.MINUS_MINUS : TOKEN_TYPE.MINUS);
+        }
+      }
+      case "+": {
+        return tkn(match("+") ? TOKEN_TYPE.PLUS_PLUS : TOKEN_TYPE.PLUS);
+      }
 
-    return errorToken(`Unexpected character: ${c}`);
+      case "=": {
+        if (peek() === "=" && peekNext() === "=") {
+          while (peek() === "=") tick();
+          while (!atEnd()) {
+            tick();
+            if (peek() === "=" && peekNext() === "=" && lookup(2) === "=") {
+              break;
+            }
+          }
+          if (atEnd()) {
+            return errorToken("Unterminated block comment");
+          }
+          while (peek() === "=") tick();
+          return Token.empty;
+        } else {
+          return tkn(match("=") ? TOKEN_TYPE.EQUAL_EQUAL : TOKEN_TYPE.EQUAL);
+        }
+      }
+    }
+    return errorToken(`Unknown token: ${char}`);
   };
 
-  /** Scans the entire source code for tokens at once. */
   const stream = () => {
     const out: Token[] = [];
-    let prev: Token<any, any> = Token.empty;
+    let prev = Token.empty;
     let now = scan();
-    if (!now.isType(TokenType.empty)) {
+    if (!now.isType(TOKEN_TYPE.EMPTY)) {
       out.push(now);
+    } else if ($error !== null) {
+      return left($error);
     }
     let peek = scan();
+    if ($error !== null) {
+      return left($error);
+    }
     while (!atEnd()) {
       prev = now;
       now = peek;
       const k = scan();
-      if (k.isType(TokenType.empty)) {
+      if ($error !== null) {
+        return left($error);
+      }
+      if (k.isType(TOKEN_TYPE.EMPTY)) {
         continue;
       } else {
         peek = k;
       }
+      // remove trailing commas
+      if (
+        prev.isRightDelimiter() &&
+        now.isType(TOKEN_TYPE.COMMA) &&
+        peek.isRightDelimiter()
+      ) {
+        continue;
+      }
       out.push(now);
     }
     out.push(peek);
-    return out;
+    return right(out);
   };
 
-  const isDone = () => $current >= source.length;
-
-  return {
-    stream,
-    scan,
-    isDone,
-  };
+  return { stream, scan, atEnd };
 }
 
-class ParserState<STMT, EXPR> {
-  /** Indicates whether an error has occurred. */
-  ERROR: null | Erratum = null;
-
-  /** Given an error object, initializes the state's ERROR field. */
-  panic(error: Erratum) {
-    this.ERROR = error;
-    return this;
-  }
-
-  /** This parser state's lexer. */
-  private lexer!: ReturnType<typeof lexical>;
-
-  /** Initializes this parser's state. */
-  init(source: string) {
-    this.lexer = lexical(source);
-  }
-
-  /** The last token parsed. */
-  prev: Token = Token.empty;
-
-  /** Where the parser currently is. */
-  cursor: number = -1;
-
-  /** The next token to parse. */
-  peek: Token = Token.empty;
-
-  /** The current token to parse. */
-  current: Token = Token.empty;
-
-  /** This parser state's source code. */
-  source: string = "";
-
-  /** The last expression parsed. */
-  lastExpression: EXPR;
-
-  /** The current expression to parse. */
-  currentExpression: EXPR;
-
-  /** The last statement parsed. */
-  lastStmt: STMT;
-
-  /** The current statement parsed. */
-  currentStmt: STMT;
-  constructor(nilExpression: EXPR, emptyStmt: STMT) {
-    this.lastExpression = nilExpression;
-    this.currentExpression = nilExpression;
-    this.lastStmt = emptyStmt;
-    this.currentStmt = emptyStmt;
-  }
-
-  /** Returns a successfully parsed expression. */
-  newExpression<E extends EXPR>(expression: E) {
-    const prev = this.currentExpression;
-    this.currentExpression = expression;
-    this.lastExpression = prev;
-    return right(expression);
-  }
-
-  /** Returns a successfully parsed statement. */
-  newStmt<S extends STMT>(statement: S) {
-    const prev = this.currentStmt;
-    this.currentStmt = statement;
-    this.lastStmt = prev;
-    const out = right(statement);
-    return out;
-  }
-
-  /**
-   * Moves the parser state forward.
-   */
-  next() {
-    this.cursor++;
-    this.current = this.peek;
-    const nextToken = this.lexer.scan();
-    if (nextToken.isErrorToken()) {
-      this.ERROR = nextToken.literal;
-      return Token.end;
-    } else {
-      this.peek = nextToken;
-      return this.current;
-    }
-  }
-
-  /**
-   * Returns true if parsing is complete.
-   * Parsing is complete if the lexer has completed scanning,
-   * or if the parser state has reached an error.
-   */
-  atEnd() {
-    return this.lexer.isDone() || this.ERROR !== null;
-  }
-
-  /**
-   * Returns a failed result containing an error.
-   * @param message - What message should the error display?
-   * @param phase - What phase did this error occur in?
-   */
-  error(message: string, phase: string) {
-    const e = syntaxError(message, phase, this.current);
-    this.ERROR = e;
-    return left(e);
-  }
-
-  /**
-   * Returns true if the next token matches the given
-   * tokenType, false otherwise.
-   */
-  check(tokenType: TokenType) {
-    if (this.atEnd()) {
-      return false;
-    } else {
-      return this.peek.isType(tokenType);
-    }
-  }
-
-  /**
-   * If the next token matches the given type,
-   * the parser moves forward (consuming
-   * the token) and returns true. Otherwise, returns
-   * false and the parser does not move forward.
-   */
-  nextIs(tokenType: TokenType) {
-    if (this.peek.isType(tokenType)) {
-      this.next();
-      return true;
-    } else {
-      return false;
-    }
-  }
-}
-
-interface Visitor<T> {
-  expressionStatement(node: ExpressionStatement): T;
-}
-
-/**
- * An object corresponding to an
- * Abstract Syntax Tree (AST) node.
- */
-abstract class ASTNode {
-  abstract accept<T>(visitor: Visitor<T>): T;
-}
-
-/**
- * An object corresponding to a Winnow statement.
- */
-abstract class Statement extends ASTNode {}
-
-/**
- * An object corresponding to an expression statement.
- */
-class ExpressionStatement extends Statement {
-  accept<T>(visitor: Visitor<T>): T {
-    return visitor.expressionStatement(this);
-  }
-}
-
-/**
- * An object corresponding to a Winnow expression.
- */
-abstract class Expression extends ASTNode {}
+abstract class TREENODE {}
 
 
+class ParserState<STMT extends TREENODE, EXPR extends TREENODE> {
 
-const enstate = <EXPR, STMT>(nilExpression: EXPR, emptyStatement: STMT) =>
-  new ParserState(nilExpression, emptyStatement);
-
-/** Parses the given source code. */
-function syntax(source: string) {
-  // const state = enstate(nil(), )
 }

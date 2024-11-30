@@ -5,6 +5,8 @@ import { compileMDX } from "next-mdx-remote/rsc";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
+import rehypeSlug from "rehype-slug";
 import Terminal from "@/components/Terminal";
 
 export type PostsFrontMatter = {
@@ -23,7 +25,7 @@ export const getCompiledMDX = cache(async (postSlug: string) => {
         },
         options: {
             mdxOptions: {
-                rehypePlugins: [rehypeKatex],
+                rehypePlugins: [rehypeKatex, rehypeHighlight, rehypeSlug],
                 remarkPlugins: [remarkGfm, remarkMath],
             },
             parseFrontmatter: true,

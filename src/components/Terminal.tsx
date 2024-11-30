@@ -12,17 +12,21 @@ const Terminal = () => {
   const handleTokenize = () => {
     const source = input;
     const result = lexical(source).stream();
-    setOutput(result.toString());
+    if (result.isLeft()) {
+      setOutput(result.unwrap().toString());
+    } else {
+      setOutput(result.unwrap().toString());
+    }
   };
   return (
-    <div className="content-center border">
+    <div className="content-center border font-mono">
       <textarea
         onChange={(event) => handleInput(event.target.value)}
         className="border border-black-600"
       />
       <div>
         <button onClick={() => handleTokenize()} className="border">
-          Tokenize
+          Scan
         </button>
       </div>
       {output && <p>{output}</p>}

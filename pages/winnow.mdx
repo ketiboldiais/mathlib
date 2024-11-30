@@ -14,9 +14,427 @@ I faced the classic economic tradeoff: Do I spend those hours generating perfect
 
 To reach this midpoint, I defined a scripting language and implemented its interpreter. This documentation page serves two purposes: (1) documenting the language's features, and (2) recording the process of implementing Winnow.
 
-## Error Handling
+## Functional Error Handling
+Winnow places a high value on error handling. To maximize both user and developer satisfaction, we need to have specific procedures for specific types of errors. We can only do so if we separate successful and failed results. We will make this separation with functional wrappers. These wrappers are basically boxes. Any procedure that can go awry will return either a `Left` or a `Right`.    
 
-All errors in Winnow will be classified by a type:
+```ts
+type Either<A, B> = Left<A> | Right<B>;
+
+class Left<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<A>(f: (x: never) => A): Either<T, never> {
+    return this as any;
+  }
+  isLeft(): this is Left<T> {
+    return true;
+  }
+  isRight(): this is never {
+    return false;
+  }
+  unwrap() {
+    return this.value;
+  }
+  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
+    return this;
+  }
+}
+const left = <T>(x:T) => new Left(x);
+
+class Right<T> {
+  private value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<X>(f: (x: T) => X): Either<never, X> {
+    return new Right(f(this.value));
+  }
+  isLeft(): this is never {
+    return false;
+  }
+  isRight(): this is Right<T> {
+    return true;
+  }
+  unwrap() {
+    return this.value;
+  }
+  chain<N, X>(f: (x: T) => Either<N, X>): Either<never, X> {
+    return f(this.value) as Either<never, X>;
+  }
+}
+const right = <T>(x:T) => new Right(x);
+```
+
+Above, we see some duplicated method names with differing return values. For example, in `Left<T>`, we almost always return `this`, but in `Right<T>`, we return actual substantive values. We do this to ensure we always have the same basic methods, or actions, available, regardless of whether we obtain a failed or successful result.
+
+Now that we have these wrappers, we can begin writing the tokenizer.
+
+## Tokenization
+Tokenization is the process of breaking up a string of code into smaller, well-defined chunks of characters called _tokens_. What constitutes "well-defined" is up to us as the designers of the language. For example, in Winnow, the code `1 + 1` comprises three well-defined tokens: `1`, `+`, and `1`. The code `"hello"` comprises a single token, corresponding to a string value `hello`. 
+
+For tokens to be well-defined, we must remove ambiguity. We must be able to distinguish between `"hello"` (use of quotations) and `hello`. In Winnow, a string of code surrounded by double quotes denotes a string value. Absent those quotes, it is a variable name (or identifier), but only if that name is not a keyword. To distinguish between all these possibilites, we categorize the tokens into _token types_.
+
+### Token Types
+Winnow implements its token types with an enum:
+
+```ts
+enum TOKEN_TYPE {
+  // Utility tokens
+  END, ERROR, EMPTY,
+  // Paired Delimiters
+  LEFT_PAREN, RIGHT_PAREN,
+  LEFT_BRACE, RIGHT_BRACE,
+  LEFT_BRACKET, RIGHT_BRACKET,
+  // Single Delimiters
+  SEMICOLON, COLON,
+  DOT, COMMA,
+  // Operator Delimiters
+  PLUS, MINUS, STAR,
+  SLASH, CARET, PERCENT,
+  BANG, AMPERSAND, TILDE,
+  VBAR, EQUAL, LESS,
+  GREATER, LESS_EQUAL, GREATER_EQUAL,
+  BANG_EQUAL, EQUAL_EQUAL, PLUS_PLUS,
+  MINUS_MINUS, STAR_STAR,
+  // Vector Operators
+  DOT_ADD, DOT_STAR, DOT_MINUS,
+  DOT_CARET, AT,
+  // Literals
+  SYMBOL, STRING, BOOLEAN,
+  INTEGER, FLOAT, FRACTION,
+  SCIENTIFIC, BIG_NUMBER, BIG_FRACTION,
+  NAN, INF, NIL,
+  NUMERIC_CONSTANT, ALGEBRAIC,
+}
+```
+Now that we have the token types, we can define a `Token` class for creating tokens:  
+
+```ts
+/** An object corresponding to a token in Winnow. */
+class Token<T extends TOKEN_TYPE = TOKEN_TYPE, L extends PRIMITIVE = PRIMITIVE> {
+  /** This token's type. */
+  $type: T;
+  /** This tokene's lexeme. */
+  $lexeme: string;
+  /** This token's literal value, if any (defaults to null). */
+  $literal: L = null as any; 
+  /** The line where this token was first encountered. */
+  $line: number;
+  /** The column where this token was first encountered. */
+  $column: number;
+  constructor(type: T, lexeme: string, line: number, column:number) {
+    this.$type = type;
+    this.$lexeme = lexeme;
+    this.$line = line;
+    this.$column = column;
+  }
+  copy() {
+    return new Token(
+      this.$type, 
+      this.$lexeme,
+      this.$line,
+      this.$column,
+    )
+  } 
+  /**
+   * Returns a copy of this token with a new token type.
+   * @param tokenType The new token type.
+   * @returns A copy of this token with the given token type.
+   */
+  withType<X extends TOKEN_TYPE>(tokenType: X) {
+    const out = this.copy();
+    out.$type = tokenType as any;
+    return out as any as Token<X, L>;
+  }
+  /**
+   * Returns a copy of this token with a new lexeme.
+   * @param lexeme The new lexeme, a string value.
+   * @returns A copy of this token with the given string as its lexeme.
+   */
+  withLexeme(lexeme:string) {
+    const out = this.copy();
+    out.$lexeme = lexeme;
+    return out;
+  }
+  /**
+   * Returns a copy of this token with a new literal value.
+   * @param primitive The new literal value, a Primitive.
+   * @returns A copy of this token with the given literal as its literal.
+   */
+  withLiteral<L2 extends PRIMITIVE>(primitive: L2) {
+    const out = this.copy();
+    out.$literal = primitive;
+    return out as any as Token<T, L2>;
+  }
+  /**
+   * Returns a copy of this token with a new line number.
+   * @param line The new line number.
+   * @returns A copy of this token with the given line as its line number.
+   */
+  withLine(line:number) {
+    const out = this.copy();
+    out.$line = line;
+    return out;
+  }
+  /**
+   * Returns a copy of this token with a new column number.
+   * @param column The new column number.
+   * @returns A copy of this token with the given column as its column number.
+   */
+  withColumn(column:number) {
+    const out = this.copy();
+    out.$column = column;
+    return out;
+  }
+}
+```
+Notice that we have a special type, called `Primitive`. This type is defined as follows: 
+
+```ts
+/** A value native to Winnow. */
+type PRIMITIVE = 
+    number 
+    | string 
+    | boolean 
+    | bigint 
+    | null 
+    | Scientific_Number 
+    | Fraction;
+```
+
+This type corresponds to values that are native to Winnow. Five of these types are native to TypeScript: `number`, `string`, `null`, `boolean`, and `bigint`. Three of these types are constructed in Winnow as objects: `Err`, `Scientific_Number`, and `Fraction`. The implementations of these types can be found [here (`Err`)](#err), [here (`Scientific_Number`)](#scientific-numbers), and [here (`Fraction`)](#fractions).   
+
+For ease of constructing new Tokens, we will write a separate constructor function:
+
+```ts
+/**
+ * Returns a new Winnow token.
+ * @param type The new token's type.
+ * @param lexeme The new token's lexeme.
+ * @param line The line where this token was first encountered.
+ * @param column The column where this token was first encountered.
+ * @returns A new instance of Token.
+ */
+function token<X extends TOKEN_TYPE>(
+  type: X,
+  lexeme: string,
+  line: number,
+  column: number
+) {
+  return new Token(type, lexeme, line, column);
+}
+```
+
+## Scanning
+At this point, we can now write the scanner. As a preview, enter some text below and scan:
+
+<Terminal/>
+
+The scanner works by moving through the source code one character at a time. That said, some tokens will comprise multiple characters (e.g., the token `!=` comprises the characters `!` and `=`). So, we need two pointers: One pointer anchored to where we start, and another pointer that keeps moving forward. We also want counters to keep track of which line and column we're on within the source code. That way, when an error occurs, we can report both the `$line` and `$column` number where that error occurred. We'll call our scanning function `lexical`: 
+
+```ts
+function lexical(code: string) {
+  /**
+   * A variable corresponding to the
+   * current line the scanner's on.
+   */
+  let $line: number = 1;
+
+  /**
+   * A variable corresponding to the
+   * current column the scanner's on.
+   */
+  let $column: number = 1;
+
+  /**
+   * A pointer to the first character
+   * of the lexeme currently being
+   * scanned.
+   */
+  let $start: number = 0;
+
+  /**
+   * A pointer to the character currently
+   * being scanned.
+   */
+  let $current: number = 0;
+}
+```
+ Notice the use of dollar signs to preface variable names. We will adopt the convention that all variable names prefaced with a `$` indicate a mutable variable. This convention is adopted throughout Winnow's code base.
+
+ Errors can occur during scanning. We want Winnow to stop immediately the moment an error occurs. At the scanning stage, that all begins on a single variable for flagging when an error occurs:
+
+ ```ts 
+  /**
+   * Error indicator defaulting to null.
+   * If initialized, then the scanning will cease.
+   */
+  let $error: null | Err = null;
+ ```
+ <figcaption>
+ Within `lexical`.
+</figcaption>
+
+ Now we'll write some functions that will come in handy later (all of this is written inside our `lexical` function):
+
+ ```ts
+   /**
+   * Returns true if the scanner has reached the end
+   * of code.
+   */
+  const atEnd = (): boolean => $current >= code.length || !isNull($error);
+
+  /**
+   * Consumes and returns the next character
+   * in the code.
+   */
+  const tick = (): string => code[$current++];
+
+  /**
+   * Returns the code substring from $start to $current.
+   */
+  const slice = (): string => code.slice($start, $current);
+
+  /**
+   * Returns a new token.
+   * @param type The token type.
+   * @param lexeme The token's lexeme.
+   * @returns A new Token.
+   */
+  const tkn = (type: TOKEN_TYPE, lexeme: string = ""): Token => {
+    lexeme = lexeme ? lexeme : slice();
+    return token(type, lexeme, $line, $column);
+  };
+
+  /**
+   * Returns an error token. If called, sets the
+   * mutable $error variable, causing scanning to
+   * cease.
+   * @param message The error message to accompany
+   * the Err object.
+   * @returns A new Token of type TOKEN_TYPE.ERROR.
+   */
+  const errorToken = (message: string): Token<TOKEN_TYPE.ERROR, Err> => {
+    const errTkn = token(TOKEN_TYPE.ERROR, "", $line, $column);
+    $error = lexicalError(message, $line, $column);
+    return token(TOKEN_TYPE.ERROR, "", $line, $column).withLiteral($error);
+  };
+
+  /**
+   * Returns the current character being scanned WITHOUT
+   * moving the scanner forward.
+   * @returns A 1-character string.
+   */
+  const peek = (): string => (atEnd() ? "" : code[$current]);
+
+  /**
+   * Returns the character just ahead of the current character
+   * WITHOUT moving the scanner forward.
+   * @returns A 1-character string.
+   */
+  const peekNext = (): string => (atEnd() ? "" : code[$current + 1]);
+
+  /**
+   * Returns the character `by` places
+   * ahead of the current character
+   * WITHOUT moving the scanner forward.
+   * @param by The number of places to look ahead.
+   * @returns A 1-character string.
+   */
+  const lookup = (by: number): string => (atEnd() ? "" : code[$current + by]);
+
+  /**
+   * If the provided expected string
+   * matches, increments $current (moving
+   * the scanner forward) and returns true.
+   * Otherwise returns false without increment (
+   * scanner doesn't move forward).
+   * @param expectedChar A 1-character string corresponding
+   * to the expected character.
+   * @returns A boolean.
+   */
+  const match = (expectedChar: string): boolean => {
+    if (atEnd()) return false;
+    if (code[$current] !== expectedChar) return false;
+    $current++;
+    return true;
+  };
+
+  /**
+   * Returns true if the current peek (the character
+   * pointed at by `$current`) matches the provided
+   * number. Otherwise, returns false.
+   * @param char A 1-char string corresponding
+   * to the expected character.
+   * @returns A boolean.
+   */
+  const peekIs = (char: string): boolean => peek() === char;
+ ```
+<figcaption>
+ Within `lexical`.
+</figcaption>
+
+## Scientific Numbers
+Winnow supports writing scientific numbers directly. Recall that scientific numbers are defined as follows:
+
+> Given $m \in \R$ and $n \in \Z,$ a scientific number is a number of the form ${m \times 10^n,}$ where $m$ is the _mantissa_ and $n$ is the _exponent_.
+
+```ts
+/** An object corresponding to a number of the form `m x 10^n`. */
+class Scientific_Number {
+  /** The mantissa in `m x 10^n`. */
+  $m: number;
+  /** The exponent (an integer) in `m x 10^n` */
+  $n: number;
+  constructor(m: number, n: number) {
+    this.$m = m;
+    this.$n = Math.floor(n);
+  }
+}
+
+/**
+ * Returns a new instance of a Scientific_Number.
+ * @param m The mantissa in `m x 10^n`.
+ * @param n The exponent (an integer) in `m x 10^n`.
+ * @returns A new scientific number (m x 10^n).
+ */
+function scinum(m: number, n: number) {
+  return new Scientific_Number(m, Math.floor(n));
+}
+```
+
+## Fractions
+Fractions are supported in Winnow natively.
+
+```ts
+/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
+class Fraction {
+  /** The numerator of this fraction. */
+  $n: number;
+  /** The denominator of this fraction. */
+  $d: number;
+  constructor(n: number, d: number) {
+    this.$n = n;
+    this.$d = d;
+  }
+}
+
+/**
+ * Returns a new Fraction. Both arguments must be integers. 
+ * If the arguments are not integers, they will be floored.
+ * @param n The numerator of this fraction (must be an integer).
+ * @param d The denominator of this fraction (must be an integer).
+ * @returns A new instance of a fraction.
+ */
+function frac(n: number, d: number) {
+  return new Fraction(Math.floor(n), Math.floor(d));
+}
+```
+
+## Err
+Errors in Winnow are implemented by the `Err` class.
 
 ```ts
 type ErrorType =
@@ -24,365 +442,39 @@ type ErrorType =
   | "syntax-error"
   | "type-error"
   | "runtime-error"
-  | "resolver-error"
   | "environment-error"
-  | "algebraic-error";
-```
+  | "resolver-error";
 
-Each of these types map to an error for a specific interpretation phase.
-
-| Error Type          | Semantic                                 |
-| ------------------- | ---------------------------------------- |
-| `lexical-error`     | An error during scanning.                |
-| `syntax-error`      | An error during parsing.                 |
-| `type-error`        | An error during type-checking.           |
-| `runtime-error`     | An error during execution.               |
-| `resolver-error`    | An error during name binding resolution. |
-| `environment-error` | An error during name environment lookup. |
-| `algebraic-error`   | An error during an algebraic operation.  |
-
-With these types defined, we can now implement the `Erratum` object:
-
-```ts
-class Erratum extends Error {
+/** An object corresponding to an error in Winnow. */
+class Err extends Error {
+  /** This error's message. */
   message: string;
-  errorType: ErrorType;
-  phase: string;
-  line: number;
-  column: number;
-  constructor(
-    message: string,
-    errorType: ErrorType,
-    phase: string,
-    line: number,
-    column: number,
-    fix: string = "none"
-  ) {
+  /** This error's type. */
+  $type: ErrorType;
+  /** The line where this error occurred. */
+  $line: number;
+  /** The column where this error occurred. */
+  $column: number;
+  constructor(message: string, type: ErrorType, line: number, column: number) {
     super(message);
     this.message = message;
-    this.errorType = errorType;
-    this.phase = phase;
-    this.line = line;
-    this.column = column;
-  }
-  report() {
-    return formattedError(
-      this.message,
-      this.phase,
-      this.errorType,
-      this.line,
-      this.column
-    );
+    this.$type = type;
+    this.$line = line;
+    this.$column = column;
   }
 }
 ```
-
-The function `formattedError` returns the erratum as a pretty-print string:
-
-```ts
-/** Ensures all errors have the same format. */
-function formattedError(
-  message: string,
-  phase: string,
-  errorType: ErrorType,
-  line: number,
-  column: number
-) {
-  let moduleName = "module";
-  switch (errorType) {
-    case "lexical-error":
-      moduleName = "scanner";
-      break;
-    case "algebraic-error":
-      moduleName = "algebraic tree transfomer";
-      break;
-    case "environment-error":
-      moduleName = "environment";
-      break;
-    case "resolver-error":
-      moduleName = "resolver";
-      break;
-    case "runtime-error":
-      moduleName = "interpreter";
-      break;
-    case "syntax-error":
-      moduleName = "parser";
-      break;
-    case "type-error":
-      moduleName = "typechecker";
-  }
-  return `${errorType.toUpperCase()}.\nWhile ${phase}, an error occurred on\nline ${line}, column ${column}.\nReporting from the ${moduleName}:\n${message}`;
-}
-```
-
-Now we define custom functions to return specific errors:
+To ease making new errors, we'll use some error generators:
 
 ```ts
-/** Returns a new error making function. */
-const errorFactory =
-  (errtype: ErrorType) =>
-  (message: string, phase: string, token: Token, fix: string = "none") =>
-    new Erratum(message, errtype, phase, token.line, token.column);
+const errorFactory = (type: ErrorType) => 
+  (message: string, line: number, column: number) => 
+    new Err(message, type, line, column);
 
-/** Returns a new lexical error. A lexical error is raised if an error occured during scanning. */
-const lexicalError = errorFactory("lexical-error");
-
-/** Returns a new syntax error. A syntax error is raised if an error occured during parsing. */
-const syntaxError = errorFactory("syntax-error");
-
-/** Returns a new runtime error. A runtime error is raised if an error occured during interpretation. */
-const runtimeError = errorFactory("runtime-error");
-
-/** Returns a new environment error. An environment error is raised if an error occured during an environment lookup. */
-const envError = errorFactory("environment-error");
-
-/** Returns a new resolver error. A resolver error is raised if an error occured during resolution. */
-const resolverError = errorFactory("resolver-error");
-
-/** Returns a new algebra error. An algebra error is raised if an error occured during a symbolic operation. Because symbolic operations are handled by the symbol engine, these errors must be handled separately. */
-const algebraError = errorFactory("algebraic-error");
+const lexicalError = errorFactory('lexical-error');
+const syntaxError = errorFactory('syntax-error');
+const typeError = errorFactory('type-error');
+const runtimeError = errorFactory('runtime-error');
+const environmentError = errorFactory('environment-error');
+const resolverError = errorFactory('resolver-error');
 ```
-
-We will use these functions extensively throughout the source code.
-
-## Tokenization
-
-Winnow begins by grouping chunks of text into tokens. Each token has a specific type. In TypeScript, we implement this with an enum:
-
-```ts
-enum TokenType {
-  // single-character tokens
-  left_paren,
-  right_paren,
-  left_brace,
-  right_brace,
-  left_bracket,
-  right_bracket,
-  comma,
-  dot,
-  minus,
-  plus,
-  semicolon,
-  slash,
-  star,
-  colon,
-  ampersand,
-  caret,
-  percent,
-
-  // one or two character tokens
-  bang,
-  bang_equal,
-  equal,
-  equal_equal,
-  greater,
-  greater_equal,
-  less,
-  less_equal,
-
-  // literals
-  identifier,
-  string,
-  integer,
-  float,
-
-  // keywords
-  and,
-  class,
-  else,
-  false,
-  for,
-  if,
-  nil,
-  or,
-  print,
-  return,
-  super,
-  this,
-  true,
-  var,
-  while,
-  nan,
-  inf,
-  pi,
-  e,
-  let,
-  fn,
-  rem,
-  mod,
-  div,
-  nor,
-  xor,
-  xnor,
-  not,
-  nand,
-
-  // utility tokens
-  error,
-  eof,
-  empty,
-}
-```
-
-With the enum defined, we implement the Token as a TypeScript object:
-
-```ts
-/** An object corresponding to a token in Winnow. */
-class Token {
-  /** This token's type. */
-  tokenType: TokenType;
-  /** This token's lexeme. */
-  lexeme: string;
-  /** The line where this token was recognized. */
-  line: number;
-  literal: Primitive = null;
-  constructor(tokenType: TokenType, lexeme: string, line: number) {
-    this.tokenType = tokenType;
-    this.lexeme = lexeme;
-    this.line = line;
-  }
-  /** Sets this token's literal value to the given primitive, and returns this. */
-  lit(value: Primitive) {
-    this.literal = value;
-    return this;
-  }
-  /** Returns true if this token is of the given type. */
-  isType(type: TokenType) {
-    return this.tokenType === type;
-  }
-  /** Returns a string representation of this token. */
-  toString() {
-    const type = TokenType[this.tokenType];
-    const lexeme = this.lexeme;
-    const line = this.line;
-    return `[${type} | ${lexeme} | ${line}]`;
-  }
-}
-```
-
-Notice the type `Primitive`. This is a custom type defined as follows:
-
-```ts
-type Primitive = string | number | boolean | null;
-```
-
-We will define some constructor functions to help us quickly create tokens. First, a function that returns a new token:
-
-```ts
-const newToken = (
-  type: TokenType,
-  lexeme: string,
-  line: number,
-  column: number
-) => new Token(type, lexeme, line, column);
-```
-
-and a function that returns an empty token:
-
-```ts
-const emptyToken = () => newToken(TokenType.empty, "", -1, -1);
-```
-
-Now we will write some helper functions for scanning. First, a function that returns true if the given string is a Latin or Greek character:
-
-```ts
-function isLatinGreek(char: string) {
-  return /^[a-zA-Z_$\u00C0-\u02AF\u0370-\u03FF\u2100-\u214F]$/.test(char);
-}
-```
-
-Second, a function that returns true if the given string is a math symbol:
-
-```ts
-function isMathSymbol(char: string) {
-  return /^[∀-⋿]/u.test(char);
-}
-```
-
-In Winnow, identifiers may comprise Latin or Greek characters or math symbols. We will use this function to test if a given string falls under either of these categories:
-
-```ts
-function isValidName(char: string) {
-  return isLatinGreek(char) || isMathSymbol(char);
-}
-```
-
-Next, a function that returns true if the given character is a Hindu-Arabic numeral:
-
-```ts
-function isDigit(char: string) {
-  return "0" <= char && char <= "9";
-}
-```
-
-We also want recognize hexadecimal, binary, and octal digits:
-
-```ts
-/** Returns true if the given string char is a hex digit. Else, returns false. */
-function isHexDigit(char: string) {
-  return (
-    ("0" <= char && char <= "9") ||
-    ("a" <= char && char <= "f") ||
-    ("A" <= char && char <= "F")
-  );
-}
-
-/** Returns true if the given string char is an octal digit. Else, returns false. */
-function isOctalDigit(char: string) {
-  return "0" <= char && char <= "7";
-}
-
-/** Returns true if the given string char is a binary digit. Else, returns false. */
-function isBinaryDigit(char: string) {
-  return char === "0" || char === "1";
-}
-```
-
-Some tokens will have a literal value. For example, the token `"17"` is of type `TokenType.integer`. There is a difference between the string `"17"` and the integer 17. Since we recognize 17 as an integer at the scanning stage, we might as well attach the numeric 17 to the Token object. Similarly, if we recognize the string `"true"` as a Boolean value, we ought to attach the Boolean `true` to the resulting object. Since the majority of tokens do not have literal values (e.g., keywords, operators, and delimiters), we set the default literal value of a token to the JavaScript `null` and assign literal values as needed with the method `lit`.
-
-We will also define two other helpful methods: (1) `isType`, which returns true if the given type matches the object's type, and (2) `toString`, which returns a simple string representation of the token.
-
-With all of this, we can now write the scanner. Winnow's tokenizes its input by scanning on demand. In other words, we won't scan the next token unless the parser specifically asks for the next token. This achieves two benefits. First, the alternative is to scan the entire source code, store the result in, say, an array, then feed that entire array to the parser. This is a perfectly valid approach, but it comes at the cost of memory. Second, by scanning on demand, we only do work when we truly need to.
-
-We'll call the scanner function `Lexical`:
-
-```ts
-function lexical(source: string) {}
-```
-
-The scanner works by reading each character in the given `source` string. The `source` is the user-provided code. Because we're reading each character in the string one by one, we need pointers:
-
-```ts
-function lexical(source: string) {
-  let $line = 1;
-  let $column = 1;
-  let $start = 0;
-  let $current = 0;
-  let $error: Erratum | null = null;
-}
-```
-
-By convention, we will preface stateful variables with a dollar sign (`$`). What these variables do:
-
-| Variable   |                                                                                                                               |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `$line`    | A counter to keep track of which line we're on.                                                                               |
-| `$column`  | A counter to keep track of which column we're on.                                                                             |
-| `$start`   | A counter corresponding to the ith character in the source string where the scanner first started.                            |
-| `$current` | A counter corresponding to the ith character in the source string where the scanner currently is.                             |
-| `$error`   | A variable that binds to either an `Erratum` object or null. If this variable is not bound to `null`, then an error occurred. |
-
-Now we'll write some helper functions:
-
-```ts
-function lexical(source: string) {
-  let $line = 1;
-  let $column = 1;
-  let $start = 0;
-  let $current = 0;
-  let $error: Erratum | null = null;
-}
-```
-
-<Terminal />
-
