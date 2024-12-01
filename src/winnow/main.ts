@@ -1,3 +1,67 @@
+/** Returns a pretty-print tree of the given Object `Obj`. */
+export function treestring<T extends Object>(
+  Obj: T,
+  cbfn?: (node: any) => void
+) {
+  const prefix = (key: keyof T, last: boolean) => {
+    let str = last ? "└" : "├";
+    if (key) str += "─ ";
+    else str += "──┐";
+    return str;
+  };
+  const getKeys = (obj: T) => {
+    const keys: (keyof T)[] = [];
+    for (const branch in obj) {
+      if (!obj.hasOwnProperty(branch) || typeof obj[branch] === "function") {
+        continue;
+      }
+      keys.push(branch);
+    }
+    return keys;
+  };
+  const grow = (
+    key: keyof T,
+    root: any,
+    last: boolean,
+    prevstack: [T, boolean][],
+    cb: (str: string) => any
+  ) => {
+    cbfn && cbfn(root);
+    let line = "";
+    let index = 0;
+    let lastKey = false;
+    let circ = false;
+    let stack = prevstack.slice(0);
+    if (stack.push([root, last]) && stack.length > 0) {
+      prevstack.forEach(function (lastState, idx) {
+        if (idx > 0) line += (lastState[1] ? " " : "│") + "  ";
+        if (!circ && lastState[0] === root) circ = true;
+      });
+      line += prefix(key, last) + key.toString();
+      if (typeof root !== "object") line += ": " + root;
+      circ && (line += " (circular ref.)");
+      cb(line);
+    }
+    if (!circ && typeof root === "object") {
+      const keys = getKeys(root);
+      keys.forEach((branch) => {
+        lastKey = ++index === keys.length;
+        grow(branch, root[branch], lastKey, stack, cb);
+      });
+    }
+  };
+  let output = "";
+  const obj = Object.assign({}, Obj);
+  grow(
+    "." as keyof T,
+    obj,
+    false,
+    [],
+    (line: string) => (output += line + "\n")
+  );
+  return output;
+}
+
 type Either<A, B> = Left<A> | Right<B>;
 
 /** An object corresponding to failure. */
@@ -139,6 +203,7 @@ enum TOKEN_TYPE {
   REM,
   MOD,
   DIV,
+  NATIVE,
 }
 
 type NumberTokenType =
@@ -355,6 +420,10 @@ class Token<
     return this.$type === TOKEN_TYPE.ERROR;
   }
 
+  isNumber(): this is Token<T, number> {
+    return typeof this.$literal === "number";
+  }
+
   /**
    * Returns true if and only if this token is a
    * right-delimiter token. That is, either a `)`,
@@ -400,6 +469,37 @@ function token<X extends TOKEN_TYPE>(
 ): Token<X> {
   return new Token(type, lexeme, line, column);
 }
+
+type NativeUnary =
+  | "ceil"
+  | "floor"
+  | "sin"
+  | "cos"
+  | "cosh"
+  | "tan"
+  | "lg"
+  | "ln"
+  | "!"
+  | "log"
+  | "arcsin"
+  | "arccos"
+  | "arcsinh"
+  | "arctan"
+  | "exp"
+  | "sinh"
+  | "sqrt"
+  | "tanh"
+  | "gcd"
+  | "avg"
+  | "deriv"
+  | "simplify"
+  | "subex"
+  | "arccosh";
+
+/** A native function that takes more than 1 argument. */
+type NativePolyAry = "max" | "min";
+
+type NativeFn = NativeUnary | NativePolyAry;
 
 export function lexical(code: string) {
   /**
@@ -616,12 +716,50 @@ export function lexical(code: string) {
     nand: () => tkn(TOKEN_TYPE.NAND),
   };
 
+  /**
+   * Record of native functions. Each key corresponds
+   * to the native function name. The number mapped to
+   * by the key is the function’s arity (the number
+   * of arguments the function takes).
+   */
+  const nativeFunctions: Record<NativeFn, number> = {
+    deriv: 1,
+    avg: 1,
+    gcd: 1,
+    simplify: 1,
+    subex: 1,
+    sqrt: 1,
+    exp: 1,
+    ceil: 1,
+    tanh: 1,
+    floor: 1,
+    sinh: 1,
+    cosh: 1,
+    sin: 1,
+    cos: 1,
+    tan: 1,
+    lg: 1,
+    ln: 1,
+    log: 1,
+    arctan: 1,
+    arccos: 1,
+    arccosh: 1,
+    arcsin: 1,
+    arcsinh: 1,
+    "!": 1,
+    max: 1,
+    min: 1,
+  };
+
   const wordToken = () => {
     while ((isValidNameChar(peek()) || isDigit(peek())) && !atEnd()) {
       tick();
     }
     const word = slice();
-    if (dictionary[word]) {
+    const native = nativeFunctions[word as NativeFn];
+    if (native) {
+      return tkn(TOKEN_TYPE.NATIVE);
+    } else if (dictionary[word]) {
       return dictionary[word]();
     } else {
       return tkn(TOKEN_TYPE.SYMBOL);
@@ -1021,6 +1159,9 @@ interface Visitor<T> {
   logicalBinaryExpression(node: LogicalBinaryExpression): T;
   relationExpression(node: RelationExpression): T;
   algebraicBinaryExpression(node: AlgebraicBinaryExpression): T;
+  algebraicUnaryExpression(node: AlgebraicUnaryExpression): T;
+  groupExpression(node: GroupExpression): T;
+  assignmentExpression(node: AssignmentExpression): T;
 }
 
 enum NODEKIND {
@@ -1037,7 +1178,10 @@ enum NODEKIND {
   VARIABLE,
   LOGICAL_INFIX,
   ALGEBRAIC_INFIX,
+  ALGEBRAIC_UNARY_EXPRESSION,
   RELATION,
+  GROUP_EXPRESSION,
+  ASSIGNMENT_EXPRESSION,
 }
 
 abstract class TREENODE {
@@ -1210,6 +1354,7 @@ class StringLiteral extends Expression {
     this.$value = value;
   }
 }
+const stringLiteral = (value: string) => new StringLiteral(value);
 
 class Variable extends Expression {
   accept<T>(visitor: Visitor<T>): T {
@@ -1228,6 +1373,8 @@ class Variable extends Expression {
   }
 }
 const variable = (name: Token<TOKEN_TYPE.SYMBOL>) => new Variable(name);
+const isVariable = (node: TREENODE): node is Variable =>
+  node.kind === NODEKIND.VARIABLE;
 
 type BinaryLogicOperator =
   | TOKEN_TYPE.AND
@@ -1311,6 +1458,49 @@ const relation = (
   right: Expression
 ) => new RelationExpression(left, op, right);
 
+class GroupExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.groupExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.GROUP_EXPRESSION;
+  }
+  toString(): string {
+    return `(${this.$expression.toString()})`;
+  }
+  $expression: Expression;
+  constructor(expression: Expression) {
+    super();
+    this.$expression = expression;
+  }
+}
+const groupExpression = (expression: Expression) =>
+  new GroupExpression(expression);
+
+class AssignmentExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.assignmentExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.ASSIGNMENT_EXPRESSION;
+  }
+  toString(): string {
+    return `${this.$name} = ${this.$value.toString()}`;
+  }
+  $variable: Variable;
+  $value: Expression;
+  get $name() {
+    return this.$variable.$name;
+  }
+  constructor(variable: Variable, value: Expression) {
+    super();
+    this.$variable = variable;
+    this.$value = value;
+  }
+}
+const assign = (name: Variable, value: Expression) =>
+  new AssignmentExpression(name, value);
+
 type AlgebraicOperator =
   | TOKEN_TYPE.PLUS
   | TOKEN_TYPE.STAR
@@ -1354,6 +1544,40 @@ const algebraicBinex = (
   op: Token<AlgebraicOperator>,
   right: Expression
 ) => new AlgebraicBinaryExpression(left, op, right);
+
+type AlgebraicUnaryOperator =
+  | TOKEN_TYPE.PLUS
+  | TOKEN_TYPE.MINUS
+  | TOKEN_TYPE.BANG;
+
+class AlgebraicUnaryExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.algebraicUnaryExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.ALGEBRAIC_UNARY_EXPRESSION;
+  }
+  toString(): string {
+    const op = `${this.$op.$lexeme}`;
+    const arg = this.$arg.toString();
+    if (this.$op.isType(TOKEN_TYPE.BANG)) {
+      return arg + op;
+    } else {
+      return op + arg;
+    }
+  }
+  $op: Token<AlgebraicUnaryOperator>;
+  $arg: Expression;
+  constructor(op: Token<AlgebraicUnaryOperator>, arg: Expression) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+}
+const algebraicUnaryExpression = (
+  op: Token<AlgebraicUnaryOperator>,
+  arg: Expression
+) => new AlgebraicUnaryExpression(op, arg);
 
 class ParserState<STMT extends TREENODE, EXPR extends TREENODE> {
   /**
@@ -1477,17 +1701,116 @@ enum BP {
 type Parslet<T> = (current: Token, lastNode: T) => Either<Err, T>;
 type ParsletEntry<T> = [Parslet<T>, Parslet<T>, BP];
 type BPTable<T> = Record<TOKEN_TYPE, ParsletEntry<T>>;
-function syntax(source: string) {
+
+export function syntax(source: string) {
   const state = enstate<Expression, Statement>(nil(), exprStmt(nil(), -1)).init(
     source
   );
-  
+
   const ___: Parslet<Expression> = (t) => {
     if (state.$ERROR !== null) return left(state.$ERROR);
     return state.error(`Unexpected token: ${t.$lexeme}`);
-  }
+  };
+
   const ___o = BP.NIL;
-  
+
+  const number: Parslet<Expression> = (tkn) => {
+    if (tkn.isNumber()) {
+      const out = tkn.isType(TOKEN_TYPE.INTEGER)
+        ? state.newExpression(integer(tkn.$literal))
+        : state.newExpression(float(tkn.$literal));
+      const peek = state.$peek;
+      if (
+        peek.isType(TOKEN_TYPE.LEFT_PAREN) ||
+        peek.isType(TOKEN_TYPE.NATIVE) ||
+        peek.isType(TOKEN_TYPE.SYMBOL)
+      ) {
+        const r = expr(BP.IMUL);
+        if (r.isLeft()) return r;
+        const right = r.unwrap();
+        const star = token(TOKEN_TYPE.STAR, "*", peek.$line, peek.$column);
+        const left = out.unwrap();
+        return state.newExpression(
+          groupExpression(algebraicBinex(left, star, right))
+        );
+      }
+      return out;
+    } else {
+      return state.error(`Expected a number, but got "${tkn.$lexeme}"`);
+    }
+  };
+
+  /** Parses a string literal. */
+  const string: Parslet<Expression> = (tkn) => {
+    return state.newExpression(stringLiteral(tkn.$lexeme));
+  };
+
+  const prefix: Parslet<Expression> = (op) => {
+    const p = precof(op.$type);
+    return expr(p).chain((arg) => {
+      if (op.isType(TOKEN_TYPE.MINUS)) {
+        return state.newExpression(algebraicUnaryExpression(op, arg));
+      } else if (op.isType(TOKEN_TYPE.PLUS)) {
+        return state.newExpression(algebraicUnaryExpression(op, arg));
+      } else {
+        return state.error(`Unknown prefix operator "${op.$lexeme}"`);
+      }
+    });
+  };
+  const infix = (
+    op: Token,
+    lhs: Expression
+  ): Either<Err, AlgebraicBinaryExpression | AssignmentExpression> => {
+    if (state.nextIs(TOKEN_TYPE.EQUAL)) {
+      if (isVariable(lhs)) {
+        const name = lhs;
+        const r = expr();
+        if (r.isLeft()) return r;
+        const rhs = r.unwrap();
+        const value = algebraicBinex(lhs, op as Token<AlgebraicOperator>, rhs);
+        return state.newExpression(assign(name, value));
+      } else {
+        return state.error(
+          `Invalid lefthand side of assignment. Expected a variable to the left of "${
+            op.$lexeme
+          }=", but got "${lhs.toString()}".`
+        );
+      }
+    }
+    const p = precof(op.$type);
+    const rhs = expr(p);
+    if (rhs.isLeft()) return rhs;
+    const out = algebraicBinex(
+      lhs,
+      op as Token<AlgebraicOperator>,
+      rhs.unwrap()
+    );
+    return state.newExpression(out);
+  };
+
+  const rightInfix = (
+    op: Token,
+    lhs: Expression
+  ): Either<Err, AlgebraicBinaryExpression> => {
+    return expr(precof(op.$type)).chain((rhs) => {
+      const out = algebraicBinex(lhs, op as Token<AlgebraicOperator>, rhs);
+      return state.newExpression(out);
+    });
+  };
+
+  /** Parses a comparison expression. */
+  const comparison = (
+    op: Token,
+    lhs: Expression
+  ): Either<Err, RelationExpression> => {
+    const p = precof(op.$type);
+    return expr(p).chain((rhs) => {
+      return state.newExpression(
+        relation(lhs, op as Token<RelationOperator>, rhs)
+      );
+    });
+  };
+
   const rules: BPTable<Expression> = {
     [TOKEN_TYPE.END]: [___, ___, ___o],
     [TOKEN_TYPE.ERROR]: [___, ___, ___o],
@@ -1502,23 +1825,33 @@ function syntax(source: string) {
     [TOKEN_TYPE.COLON]: [___, ___, ___o],
     [TOKEN_TYPE.DOT]: [___, ___, ___o],
     [TOKEN_TYPE.COMMA]: [___, ___, ___o],
-    [TOKEN_TYPE.PLUS]: [___, ___, ___o],
-    [TOKEN_TYPE.MINUS]: [___, ___, ___o],
-    [TOKEN_TYPE.STAR]: [___, ___, ___o],
-    [TOKEN_TYPE.SLASH]: [___, ___, ___o],
-    [TOKEN_TYPE.CARET]: [___, ___, ___o],
-    [TOKEN_TYPE.PERCENT]: [___, ___, ___o],
+
+    // Algebraic Expressions
+    [TOKEN_TYPE.PLUS]: [prefix, infix, BP.SUM],
+    [TOKEN_TYPE.MINUS]: [prefix, infix, BP.DIFFERENCE],
+    [TOKEN_TYPE.STAR]: [___, infix, BP.PRODUCT],
+    [TOKEN_TYPE.SLASH]: [___, infix, BP.QUOTIENT],
+    [TOKEN_TYPE.PERCENT]: [___, infix, BP.QUOTIENT],
+    [TOKEN_TYPE.REM]: [___, infix, BP.QUOTIENT],
+    [TOKEN_TYPE.MOD]: [___, infix, BP.QUOTIENT],
+    [TOKEN_TYPE.DIV]: [___, infix, BP.QUOTIENT],
+    [TOKEN_TYPE.CARET]: [___, rightInfix, BP.POWER],
+
     [TOKEN_TYPE.BANG]: [___, ___, ___o],
     [TOKEN_TYPE.AMPERSAND]: [___, ___, ___o],
     [TOKEN_TYPE.TILDE]: [___, ___, ___o],
     [TOKEN_TYPE.VBAR]: [___, ___, ___o],
     [TOKEN_TYPE.EQUAL]: [___, ___, ___o],
-    [TOKEN_TYPE.LESS]: [___, ___, ___o],
-    [TOKEN_TYPE.GREATER]: [___, ___, ___o],
-    [TOKEN_TYPE.LESS_EQUAL]: [___, ___, ___o],
-    [TOKEN_TYPE.GREATER_EQUAL]: [___, ___, ___o],
-    [TOKEN_TYPE.BANG_EQUAL]: [___, ___, ___o],
-    [TOKEN_TYPE.EQUAL_EQUAL]: [___, ___, ___o],
+
+    // comparison expressions
+    [TOKEN_TYPE.LESS]: [___, comparison, BP.REL],
+    [TOKEN_TYPE.GREATER]: [___, comparison, BP.REL],
+    [TOKEN_TYPE.LESS_EQUAL]: [___, comparison, BP.REL],
+    [TOKEN_TYPE.GREATER_EQUAL]: [___, comparison, BP.REL],
+    [TOKEN_TYPE.BANG_EQUAL]: [___, comparison, BP.REL],
+    [TOKEN_TYPE.EQUAL_EQUAL]: [___, comparison, BP.REL],
+
+    // Vector expressions
     [TOKEN_TYPE.PLUS_PLUS]: [___, ___, ___o],
     [TOKEN_TYPE.MINUS_MINUS]: [___, ___, ___o],
     [TOKEN_TYPE.STAR_STAR]: [___, ___, ___o],
@@ -1531,10 +1864,10 @@ function syntax(source: string) {
     [TOKEN_TYPE.POUND_MINUS]: [___, ___, ___o],
     [TOKEN_TYPE.POUND_STAR]: [___, ___, ___o],
     [TOKEN_TYPE.SYMBOL]: [___, ___, ___o],
-    [TOKEN_TYPE.STRING]: [___, ___, ___o],
+    [TOKEN_TYPE.STRING]: [string, ___, BP.ATOM],
     [TOKEN_TYPE.BOOLEAN]: [___, ___, ___o],
-    [TOKEN_TYPE.INTEGER]: [___, ___, ___o],
-    [TOKEN_TYPE.FLOAT]: [___, ___, ___o],
+    [TOKEN_TYPE.INTEGER]: [number, ___, BP.ATOM],
+    [TOKEN_TYPE.FLOAT]: [number, ___, BP.ATOM],
     [TOKEN_TYPE.FRACTION]: [___, ___, ___o],
     [TOKEN_TYPE.SCIENTIFIC]: [___, ___, ___o],
     [TOKEN_TYPE.BIG_NUMBER]: [___, ___, ___o],
@@ -1564,8 +1897,61 @@ function syntax(source: string) {
     [TOKEN_TYPE.PRINT]: [___, ___, ___o],
     [TOKEN_TYPE.SUPER]: [___, ___, ___o],
     [TOKEN_TYPE.THIS]: [___, ___, ___o],
-    [TOKEN_TYPE.REM]: [___, ___, ___o],
-    [TOKEN_TYPE.MOD]: [___, ___, ___o],
-    [TOKEN_TYPE.DIV]: [___, ___, ___o]
-  }
+
+    [TOKEN_TYPE.NATIVE]: [___, ___, ___o],
+  };
+
+  const prefixRule = (token: TOKEN_TYPE) => rules[token][0];
+  const infixRule = (token: TOKEN_TYPE) => rules[token][1];
+  const precof = (token: TOKEN_TYPE) => rules[token][2];
+
+  const expr = (minbp: BP = BP.LOWEST): Either<Err, Expression> => {
+    let token = state.next();
+    const pre = prefixRule(token.$type);
+    let lhs = pre(token, nil());
+    if (lhs.isLeft()) return lhs;
+    while (minbp < precof(state.$peek.$type)) {
+      if (state.atEnd()) break;
+      token = state.next();
+      const r = infixRule(token.$type);
+      const rhs = r(token, lhs.unwrap());
+      if (rhs.isLeft()) return rhs;
+      lhs = rhs;
+    }
+    return lhs;
+  };
+
+  const expression_statement = (): Either<Err, ExpressionStatement> => {
+    const out = expr();
+    if (out.isLeft()) return out;
+    const expression = out.unwrap();
+    const line = state.$peek.$line;
+    if (state.nextIs(TOKEN_TYPE.SEMICOLON) || state.implicitSemicolonOK()) {
+      return state.newStatement(exprStmt(expression, line));
+    }
+    return state.error('Expected ";" to end the statement');
+  };
+
+  const statement = (): Either<Err, Statement> => {
+    return expression_statement();
+  };
+
+  return {
+    expression() {
+      if (state.$ERROR !== null) return left(state.$ERROR);
+      const out = expr();
+      return out;
+    },
+    statements() {
+      if (state.$ERROR !== null) return left(state.$ERROR);
+      const stmts: Statement[] = [];
+      while (!state.atEnd()) {
+        const stmt = statement();
+        if (stmt.isLeft()) return stmt;
+        stmts.push(stmt.unwrap());
+      }
+      console.log(stmts);
+      return right(stmts);
+    },
+  };
 }

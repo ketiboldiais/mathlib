@@ -1,6 +1,6 @@
 "use client";
 
-import { lexical } from "@/winnow/main";
+import { lexical, syntax, treestring } from "@/winnow/main";
 import { useState } from "react";
 
 const Terminal = () => {
@@ -18,6 +18,15 @@ const Terminal = () => {
       setOutput(result.unwrap().toString());
     }
   };
+  const handleParse = () => {
+    const source = input;
+    const result = syntax(source).statements();
+    if (result.isLeft()) {
+      setOutput(result.unwrap().toString());
+    } else {
+      setOutput(treestring(result.unwrap()));
+    }
+  };
   return (
     <div className="content-center border font-mono">
       <textarea
@@ -28,8 +37,14 @@ const Terminal = () => {
         <button onClick={() => handleTokenize()} className="border">
           Scan
         </button>
+        <button onClick={() => handleParse()} className="border">
+          Parse
+        </button>
       </div>
-      {output && <p>{output}</p>}
+      {output && 
+      <pre>
+        {output}
+      </pre>}
     </div>
   );
 };

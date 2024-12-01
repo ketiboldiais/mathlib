@@ -228,7 +228,7 @@ function token<X extends TOKEN_TYPE>(
 ```
 
 ## Scanning
-At this point, we can now write the scanner. As a preview, enter some text below and scan:
+At this point, we can now write the scanner. As a preview, enter some text below and hit scan to tokenize the text:
 
 <Terminal/>
 
@@ -376,6 +376,172 @@ function lexical(code: string) {
  Within `lexical`.
 </figcaption>
 
+The brunt of the work is done by a single function called `scan`. This function scans a single character, branching off to different helper functions (to be covered shortly), depending on what character we encounter. There is a lot of code below, but we will cover each section carefully.
+
+```ts
+  const scan = (): Token => {
+    // Start by skipping whitespace.
+    skipWhitespace();
+
+    // Set the $start and $current pointers
+    // to the same characters.
+    $start = $current;
+
+    // If we've reached the end of the source code,
+    // immediately return an END token.
+    if (atEnd()) return tkn(TOKEN_TYPE.END, "END");
+
+    // Now get the current character and move the
+    // scanner forward.
+    const char = tick();
+
+    // If the character is a valid name starter (a Latin
+    // or Greek character, a unicode math symbol,
+    // an underscore, or a `$`), returns a word token.
+    if (isValidNameChar(char)) return wordToken();
+
+    // If the character is '#' then we have either
+    // a BIG_NUMBER token, or a matrix operator.
+    if (char === "#") {
+      if (isDigit(peek())) {
+        return bigNumberToken();
+      } else if (match("+")) {
+        return tkn(TOKEN_TYPE.POUND_PLUS);
+      } else if (match("-")) {
+        return tkn(TOKEN_TYPE.POUND_MINUS);
+      } else if (match("*")) {
+        return tkn(TOKEN_TYPE.POUND_STAR);
+      } else {
+        return errorToken('Expected digits after "#".');
+      }
+    }
+    // If the character is a digit, then we have
+    // a number token.
+    if (isDigit(char)) {
+      if (char === "0" && match("b")) {
+        return binaryNumberToken();
+      } else if (char === "0" && match("o")) {
+        return octalNumberToken();
+      } else if (char === "0" && match("x")) {
+        return hexNumberToken();
+      } else {
+        return numberToken(TOKEN_TYPE.INTEGER);
+      }
+    }
+    switch (char) {
+      case ":": return tkn(TOKEN_TYPE.COLON);
+      case "&": return tkn(TOKEN_TYPE.AMPERSAND);
+      case "~": return tkn(TOKEN_TYPE.TILDE);
+      case "|": return tkn(TOKEN_TYPE.VBAR);
+      case "(": return tkn(TOKEN_TYPE.LEFT_PAREN);
+      case ")": return tkn(TOKEN_TYPE.RIGHT_PAREN);
+      case "[": return tkn(TOKEN_TYPE.LEFT_BRACKET);
+      case "]": return tkn(TOKEN_TYPE.RIGHT_BRACKET);
+      case "{": return tkn(TOKEN_TYPE.LEFT_BRACE);
+      case "}": return tkn(TOKEN_TYPE.RIGHT_BRACE);
+      case ",": return tkn(TOKEN_TYPE.COMMA);
+      case "*": return tkn(TOKEN_TYPE.STAR);
+      case ";": return tkn(TOKEN_TYPE.SEMICOLON);
+      case "%": return tkn(TOKEN_TYPE.PERCENT);
+      case "/": return tkn(TOKEN_TYPE.SLASH);
+      case "^": return tkn(TOKEN_TYPE.CARET);
+      case "!":
+        return tkn(match("=") ? TOKEN_TYPE.BANG_EQUAL : TOKEN_TYPE.BANG);
+      case "<":
+        return tkn(match("=") ? TOKEN_TYPE.LESS_EQUAL : TOKEN_TYPE.LESS);
+      case ">":
+        return tkn(match("=") ? TOKEN_TYPE.GREATER_EQUAL : TOKEN_TYPE.GREATER);
+      case '"':
+        return stringToken();
+      case ".": {
+        if (match("+")) {
+          return tkn(TOKEN_TYPE.DOT_ADD);
+        } else if (match("-")) {
+          return tkn(TOKEN_TYPE.DOT_MINUS);
+        } else if (match("*")) {
+          return tkn(TOKEN_TYPE.DOT_STAR);
+        } else if (match("^")) {
+          return tkn(TOKEN_TYPE.DOT_CARET);
+        } else {
+          return tkn(TOKEN_TYPE.DOT);
+        }
+      }
+      case "-": {
+        if (peek() === "-" && peekNext() === "-") {
+          while (peek() !== "\n" && !atEnd()) {
+            tick();
+          }
+          return Token.empty;
+        } else {
+          return tkn(match("-") ? TOKEN_TYPE.MINUS_MINUS : TOKEN_TYPE.MINUS);
+        }
+      }
+      case "+": {
+        return tkn(match("+") ? TOKEN_TYPE.PLUS_PLUS : TOKEN_TYPE.PLUS);
+      }
+
+      case "=": {
+        if (peek() === "=" && peekNext() === "=") {
+          while (peek() === "=") tick();
+          while (!atEnd()) {
+            tick();
+            if (peek() === "=" && peekNext() === "=" && lookup(2) === "=") {
+              break;
+            }
+          }
+          if (atEnd()) {
+            return errorToken("Unterminated block comment");
+          }
+          while (peek() === "=") tick();
+          return Token.empty;
+        } else {
+          return tkn(match("=") ? TOKEN_TYPE.EQUAL_EQUAL : TOKEN_TYPE.EQUAL);
+        }
+      }
+    }
+    return errorToken(`Unknown token: ${char}`);
+  };
+```
+<figcaption>
+ Within `lexical`.
+</figcaption>
+
+### Whitespace
+Right off the bat, we start by skipping whitespace. Unlike Haskell and Python, Winnow has few rules with respect to whitespace. The `skipWhitespace` function is implemented as follows: 
+
+```ts
+  /**
+   * Consumes all whitespace while moving
+   * the scanner's `$current` pointer
+   * forward.
+   * @returns Nothing.
+   */
+  const skipWhitespace = (): void => {
+    while (!atEnd()) {
+      const char: string = peek();
+      switch (char) {
+        case " ":
+        case "\r":
+        case "\t":
+          tick();
+          $column++;
+          break;
+        case "\n":
+          $line++;
+          $column = 0;
+          tick();
+          break;
+        default:
+          return;
+      }
+    }
+  };
+```
+<figcaption>
+Within `lexical`.
+</figcaption>
+
+
 ## Scientific Numbers
 Winnow supports writing scientific numbers directly. Recall that scientific numbers are defined as follows:
 
@@ -478,3 +644,4 @@ const runtimeError = errorFactory('runtime-error');
 const environmentError = errorFactory('environment-error');
 const resolverError = errorFactory('resolver-error');
 ```
+

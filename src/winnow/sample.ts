@@ -11704,6 +11704,7 @@ function syntax(source: string) {
     [tt.bang]: [___, factorial_expression, bp.postfix],
     [tt.plus_plus]: [___, increment, bp.postfix],
     [tt.minus_minus]: [___, decrement, bp.postfix],
+    
     // vector expressions
     [tt.dot_add]: [___, vector_infix, bp.sum],
     [tt.dot_minus]: [___, vector_infix, bp.sum],
