@@ -1220,6 +1220,7 @@ enum nodekind {
 
 interface Visitor<T> {
   blockStmt(node: BlockStatement): T;
+  exprStmt(node: ExprStmt): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1274,6 +1275,29 @@ function isBlockStmt(node: ASTNode): node is BlockStatement {
 /** Returns a new block statement node. */
 function blockStmt(statements: Statement[]) {
   return new BlockStatement(statements);
+}
+
+/** A node corresponding to an expression statement. */
+class ExprStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.exprStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.expression_statement;
+  }
+  toString(): string {
+    return 'expression-statement';
+  }
+  $expression: Expr;
+  constructor(expression: Expr) {
+    super();
+    this.$expression = expression;
+  }
+}
+
+/** Returns a new Expression Statement. */
+function exprStmt(expression: Expr) {
+  return new ExprStmt(expression);
 }
 
 /** A node corresponding to an expression node. */
