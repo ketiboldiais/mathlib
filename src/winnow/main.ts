@@ -1,3 +1,4 @@
+// § Utility Functions
 /** Returns a pretty-print tree of the given Object `Obj`. */
 export function treestring<T extends Object>(
   Obj: T,
@@ -116,6 +117,117 @@ class Right<T> {
 /** Returns a new Right with value `x` of type `T`. */
 const right = <T>(x: T) => new Right(x);
 
+type NumberTokenType =
+  | TOKEN_TYPE.INTEGER
+  | TOKEN_TYPE.FLOAT
+  | TOKEN_TYPE.BIG_NUMBER
+  | TOKEN_TYPE.SCIENTIFIC
+  | TOKEN_TYPE.FRACTION;
+
+type ErrorType =
+  | "lexical-error"
+  | "syntax-error"
+  | "type-error"
+  | "runtime-error"
+  | "environment-error"
+  | "resolver-error";
+
+// § Error Handling
+/** An object corresponding to an error in Winnow. */
+class Err extends Error {
+  /** This error's message. */
+  message: string;
+  /** This error's type. */
+  $type: ErrorType;
+  /** The line where this error occurred. */
+  $line: number;
+  /** The column where this error occurred. */
+  $column: number;
+  constructor(message: string, type: ErrorType, line: number, column: number) {
+    super(message);
+    this.message = message;
+    this.$type = type;
+    this.$line = line;
+    this.$column = column;
+  }
+  toString() {
+    return this.message;
+  }
+}
+
+const errorFactory =
+  (type: ErrorType) => (message: string, line: number, column: number) =>
+    new Err(message, type, line, column);
+const lexicalError = errorFactory("lexical-error");
+
+// § Primitives
+
+/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
+class Fraction {
+  /** The numerator of this fraction. */
+  $n: number;
+  /** The denominator of this fraction. */
+  $d: number;
+  constructor(n: number, d: number) {
+    this.$n = n;
+    this.$d = d;
+  }
+  toString() {
+    return `${this.$n}/${this.$d}`;
+  }
+}
+
+/**
+ * Returns a new Fraction. Both arguments must be integers.
+ * If the arguments are not integers, they will be floored.
+ * @param n The numerator of this fraction (must be an integer).
+ * @param d The denominator of this fraction (must be an integer).
+ * @returns A new instance of a fraction.
+ */
+function fraction(n: number, d: number) {
+  return new Fraction(Math.floor(n), Math.floor(d));
+}
+
+/** An object corresponding to a number of the form `m x 10^n`. */
+class Scientific_Number {
+  /** The mantissa in `m x 10^n`. */
+  $m: number;
+  /** The exponent (an integer) in `m x 10^n` */
+  $n: number;
+  constructor(m: number, n: number) {
+    this.$m = m;
+    this.$n = Math.floor(n);
+  }
+}
+
+/**
+ * Returns a new instance of a Scientific_Number.
+ * @param m The mantissa in `m x 10^n`.
+ * @param n The exponent (an integer) in `m x 10^n`.
+ * @returns A new scientific number (m x 10^n).
+ */
+function scinum(m: number, n: number) {
+  return new Scientific_Number(m, Math.floor(n));
+}
+
+/** A value native to Winnow. */
+type PRIMITIVE =
+  | number
+  | string
+  | null
+  | boolean
+  | bigint
+  | Scientific_Number
+  | Fraction
+  | Err;
+
+/** Returns true iff `x` is null. */
+function isNull(x: any): x is null {
+  return x === null;
+}
+
+// § Token Types
+
 enum TOKEN_TYPE {
   // Utility tokens
   END,
@@ -206,111 +318,7 @@ enum TOKEN_TYPE {
   NATIVE,
 }
 
-type NumberTokenType =
-  | TOKEN_TYPE.INTEGER
-  | TOKEN_TYPE.FLOAT
-  | TOKEN_TYPE.BIG_NUMBER
-  | TOKEN_TYPE.SCIENTIFIC
-  | TOKEN_TYPE.FRACTION;
-
-type ErrorType =
-  | "lexical-error"
-  | "syntax-error"
-  | "type-error"
-  | "runtime-error"
-  | "environment-error"
-  | "resolver-error";
-
-/** An object corresponding to an error in Winnow. */
-class Err extends Error {
-  /** This error's message. */
-  message: string;
-  /** This error's type. */
-  $type: ErrorType;
-  /** The line where this error occurred. */
-  $line: number;
-  /** The column where this error occurred. */
-  $column: number;
-  constructor(message: string, type: ErrorType, line: number, column: number) {
-    super(message);
-    this.message = message;
-    this.$type = type;
-    this.$line = line;
-    this.$column = column;
-  }
-  toString() {
-    return this.message;
-  }
-}
-
-const errorFactory =
-  (type: ErrorType) => (message: string, line: number, column: number) =>
-    new Err(message, type, line, column);
-const lexicalError = errorFactory("lexical-error");
-
-/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
-class Fraction {
-  /** The numerator of this fraction. */
-  $n: number;
-  /** The denominator of this fraction. */
-  $d: number;
-  constructor(n: number, d: number) {
-    this.$n = n;
-    this.$d = d;
-  }
-  toString() {
-    return `${this.$n}/${this.$d}`;
-  }
-}
-
-/**
- * Returns a new Fraction. Both arguments must be integers.
- * If the arguments are not integers, they will be floored.
- * @param n The numerator of this fraction (must be an integer).
- * @param d The denominator of this fraction (must be an integer).
- * @returns A new instance of a fraction.
- */
-function fraction(n: number, d: number) {
-  return new Fraction(Math.floor(n), Math.floor(d));
-}
-
-/** An object corresponding to a number of the form `m x 10^n`. */
-class Scientific_Number {
-  /** The mantissa in `m x 10^n`. */
-  $m: number;
-  /** The exponent (an integer) in `m x 10^n` */
-  $n: number;
-  constructor(m: number, n: number) {
-    this.$m = m;
-    this.$n = Math.floor(n);
-  }
-}
-
-/**
- * Returns a new instance of a Scientific_Number.
- * @param m The mantissa in `m x 10^n`.
- * @param n The exponent (an integer) in `m x 10^n`.
- * @returns A new scientific number (m x 10^n).
- */
-function scinum(m: number, n: number) {
-  return new Scientific_Number(m, Math.floor(n));
-}
-
-/** A value native to Winnow. */
-type PRIMITIVE =
-  | number
-  | string
-  | null
-  | boolean
-  | bigint
-  | Scientific_Number
-  | Fraction
-  | Err;
-
-/** Returns true iff `x` is null. */
-function isNull(x: any): x is null {
-  return x === null;
-}
+// § Token Object
 
 /** An object corresponding to a token in Winnow. */
 class Token<
@@ -319,7 +327,7 @@ class Token<
 > {
   /** This token's type. */
   $type: T;
-  
+
   /** This tokene's lexeme. */
   $lexeme: string;
 
@@ -421,7 +429,7 @@ class Token<
    * Returns true if this token is a number token.
    * If this token is a number token, then there
    * must be an accompanying JavaScript literal number
-   * (either a float or an int). 
+   * (either a float or an int).
    */
   isNumber(): this is Token<T, number> {
     return typeof this.$literal === "number";
@@ -448,7 +456,7 @@ class Token<
     -1,
     -1
   );
-  
+
   /** The end token, marking the end of input. */
   static end: Token<TOKEN_TYPE, any> = new Token(TOKEN_TYPE.END, "END", -1, -1);
 
@@ -476,6 +484,8 @@ function token<X extends TOKEN_TYPE>(
 ): Token<X> {
   return new Token(type, lexeme, line, column);
 }
+
+// § Native Function Types
 
 type NativeUnary =
   | "ceil"
@@ -507,6 +517,8 @@ type NativeUnary =
 type NativePolyAry = "max" | "min";
 
 type NativeFn = NativeUnary | NativePolyAry;
+
+// § Lexical
 
 export function lexical(code: string) {
   /**
