@@ -1217,3 +1217,28 @@ enum nodekind {
   big_number,
   big_rational,
 }
+
+interface Visitor<T> {}
+abstract class TreeNode {}
+abstract class ASTNode extends TreeNode {
+  abstract accept<T>(visitor: Visitor<T>): T;
+  abstract toString(): string;
+  abstract isStatement(): this is Statement;
+  abstract isExpr(): this is Expr;
+}
+abstract class Statement extends ASTNode {
+  isStatement(): this is Statement {
+    return true;
+  }
+  isExpr(): this is Expr {
+    return false;
+  }
+}
+abstract class Expr extends ASTNode {
+  isStatement(): this is Statement {
+    return false;
+  }
+  isExpr(): this is Expr {
+    return true;
+  }
+}
