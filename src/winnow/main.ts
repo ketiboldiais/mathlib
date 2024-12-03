@@ -1218,14 +1218,24 @@ enum nodekind {
   big_rational,
 }
 
-interface Visitor<T> {}
-abstract class TreeNode {}
+interface Visitor<T> {
+  blockStmt(node: BlockStatement): T;
+}
+
+/** A node corresponding to some syntax tree node. */
+abstract class TreeNode {
+  abstract kind(): nodekind;
+}
+
+/** A node corresponding to an abstract syntax tree node. */
 abstract class ASTNode extends TreeNode {
   abstract accept<T>(visitor: Visitor<T>): T;
   abstract toString(): string;
   abstract isStatement(): this is Statement;
   abstract isExpr(): this is Expr;
 }
+
+/** A node corresponding to a statement node. */
 abstract class Statement extends ASTNode {
   isStatement(): this is Statement {
     return true;
@@ -1234,6 +1244,39 @@ abstract class Statement extends ASTNode {
     return false;
   }
 }
+
+// TODO - Class Statement Node
+
+/** A node corresponding to a block statement node. */
+class BlockStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.blockStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.block_statement;
+  }
+  toString(): string {
+    return "block-statement";
+  }
+  /** The statements comprising this block. */
+  $statements: Statement[];
+  constructor(statements: Statement[]) {
+    super();
+    this.$statements = statements;
+  }
+}
+
+/** Returns true, and asserts, iff the given node is a block statement node. */
+function isBlockStmt(node: ASTNode): node is BlockStatement {
+  return node.kind() === nodekind.block_statement;
+}
+
+/** Returns a new block statement node. */
+function blockStmt(statements: Statement[]) {
+  return new BlockStatement(statements);
+}
+
+/** A node corresponding to an expression node. */
 abstract class Expr extends ASTNode {
   isStatement(): this is Statement {
     return false;
