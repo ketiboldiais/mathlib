@@ -319,23 +319,31 @@ class Token<
 > {
   /** This token's type. */
   $type: T;
+  
   /** This tokene's lexeme. */
   $lexeme: string;
+
   /** This token's literal value, if any (defaults to null). */
   $literal: L = null as any;
+
   /** The line where this token was first encountered. */
   $line: number;
+
   /** The column where this token was first encountered. */
   $column: number;
+
   constructor(type: T, lexeme: string, line: number, column: number) {
     this.$type = type;
     this.$lexeme = lexeme;
     this.$line = line;
     this.$column = column;
   }
+
+  /** Returns a copy of this token. */
   copy() {
     return new Token(this.$type, this.$lexeme, this.$line, this.$column);
   }
+
   /**
    * Returns a copy of this token with a new token type.
    * @param tokenType The new token type.
@@ -346,6 +354,7 @@ class Token<
     out.$type = tokenType as any;
     return out as any as Token<X, L>;
   }
+
   /**
    * Returns a copy of this token with a new lexeme.
    * @param lexeme The new lexeme, a string value.
@@ -356,6 +365,7 @@ class Token<
     out.$lexeme = lexeme;
     return out;
   }
+
   /**
    * Returns a copy of this token with a new literal value.
    * @param primitive The new literal value, a Primitive.
@@ -366,6 +376,7 @@ class Token<
     out.$literal = primitive;
     return out as any as Token<T, L2>;
   }
+
   /**
    * Returns a copy of this token with a new line number.
    * @param line The new line number.
@@ -376,6 +387,7 @@ class Token<
     out.$line = line;
     return out;
   }
+
   /**
    * Returns a copy of this token with a new column number.
    * @param column The new column number.
@@ -387,14 +399,30 @@ class Token<
     return out;
   }
 
+  /**
+   * Returns true, and asserts, if this token
+   * is of the given type `K`.
+   */
   isType<K extends T>(type: K): this is Token<K> {
     return this.$type === type;
   }
 
+  /**
+   * Returns true if this token is an error token.
+   * If this token is an error token, then there must
+   * be an accompanying Err object in its $literal
+   * field.
+   */
   isErrorToken(): this is Token<TOKEN_TYPE.ERROR, Err> {
     return this.$type === TOKEN_TYPE.ERROR;
   }
 
+  /**
+   * Returns true if this token is a number token.
+   * If this token is a number token, then there
+   * must be an accompanying JavaScript literal number
+   * (either a float or an int). 
+   */
   isNumber(): this is Token<T, number> {
     return typeof this.$literal === "number";
   }
@@ -413,18 +441,18 @@ class Token<
     );
   }
 
-  isVariable(): this is Token<TOKEN_TYPE.SYMBOL> {
-    return this.$type === TOKEN_TYPE.SYMBOL;
-  }
-
+  /** The empty token, used as a placeholder. */
   static empty: Token<TOKEN_TYPE, any> = new Token(
     TOKEN_TYPE.EMPTY,
     "",
     -1,
     -1
   );
+  
+  /** The end token, marking the end of input. */
   static end: Token<TOKEN_TYPE, any> = new Token(TOKEN_TYPE.END, "END", -1, -1);
 
+  /** Returns a string form of this token. */
   toString() {
     return `{token: ${TOKEN_TYPE[this.$type]}, lexeme: ${this.$lexeme}, line: ${
       this.$line
@@ -664,6 +692,7 @@ export function lexical(code: string) {
    */
   const isDigit = (char: string) => "0" <= char && char <= "9";
 
+  /** Dictionary of keywords to tokens. */
   const dictionary: Record<string, () => Token> = {
     this: () => tkn(TOKEN_TYPE.THIS),
     super: () => tkn(TOKEN_TYPE.SUPER),
@@ -729,6 +758,7 @@ export function lexical(code: string) {
     min: 1,
   };
 
+  /** Generates a word token. */
   const wordToken = () => {
     while ((isValidNameChar(peek()) || isDigit(peek())) && !atEnd()) {
       tick();
@@ -809,6 +839,7 @@ export function lexical(code: string) {
     return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
   };
 
+  /** Generates number token. */
   const numTkn = (
     numberString: string,
     type: NumberTokenType,
@@ -816,6 +847,7 @@ export function lexical(code: string) {
   ) => {
     const n = hasSeparators ? numberString.replaceAll("_", "") : numberString;
     switch (type) {
+      // handle integers
       case TOKEN_TYPE.INTEGER: {
         const num = Number.parseInt(n);
         if (num > Number.MAX_SAFE_INTEGER) {
@@ -826,6 +858,7 @@ export function lexical(code: string) {
           return tkn(type).withLiteral(num);
         }
       }
+      // handle floats
       case TOKEN_TYPE.FLOAT: {
         const num = Number.parseFloat(n);
         if (num > Number.MAX_VALUE) {
@@ -834,12 +867,14 @@ export function lexical(code: string) {
           );
         }
       }
+      // handle fractions
       case TOKEN_TYPE.FRACTION: {
         const [a, b] = n.split("|");
         const N = Number.parseInt(a);
         const D = Number.parseInt(b);
         return tkn(type).withLiteral(fraction(N, D));
       }
+      // handle scientific numbers
       case TOKEN_TYPE.SCIENTIFIC: {
         const [a, b] = n.split("E");
         const base = Number.parseFloat(a);
