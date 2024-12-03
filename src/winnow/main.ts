@@ -70,7 +70,7 @@ class Left<T> {
   constructor(value: T) {
     this.value = value;
   }
-  map<A>(f: (x: never) => A): Either<T, never> {
+  map<A>(): Either<T, never> {
     return this as any;
   }
   isLeft(): this is Left<T> {
@@ -82,7 +82,7 @@ class Left<T> {
   unwrap() {
     return this.value;
   }
-  chain<X, S>(f: (x: never) => Either<X, S>): Left<T> {
+  chain<X, S>(): Left<T> {
     return this;
   }
 }
@@ -247,11 +247,6 @@ const errorFactory =
   (type: ErrorType) => (message: string, line: number, column: number) =>
     new Err(message, type, line, column);
 const lexicalError = errorFactory("lexical-error");
-const syntaxError = errorFactory("syntax-error");
-const typeError = errorFactory("type-error");
-const runtimeError = errorFactory("runtime-error");
-const environmentError = errorFactory("environment-error");
-const resolverError = errorFactory("resolver-error");
 
 /** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
 class Fraction {
@@ -312,29 +307,9 @@ type PRIMITIVE =
   | Fraction
   | Err;
 
-/** Returns true iff `x` is a Scientific_Number. */
-function isScientificNumber(x: any): x is Scientific_Number {
-  return x instanceof Scientific_Number;
-}
-
 /** Returns true iff `x` is null. */
 function isNull(x: any): x is null {
   return x === null;
-}
-
-/** Returns true iff `x` is a Boolean value. */
-function isBoolean(x: any): x is boolean {
-  return typeof x === "boolean";
-}
-
-/** Returns true iff `x` is a number value. */
-function isNumber(x: any): x is number {
-  return typeof x === "number";
-}
-
-/** Returns true iff `x` is a string value. */
-function isString(x: any): x is string {
-  return typeof x === "string";
 }
 
 /** An object corresponding to a token in Winnow. */
@@ -437,7 +412,7 @@ class Token<
       this.$type === TOKEN_TYPE.RIGHT_BRACKET
     );
   }
-  
+
   isVariable(): this is Token<TOKEN_TYPE.SYMBOL> {
     return this.$type === TOKEN_TYPE.SYMBOL;
   }
@@ -574,7 +549,6 @@ export function lexical(code: string) {
    * @returns A new Token of type TOKEN_TYPE.ERROR.
    */
   const errorToken = (message: string): Token<TOKEN_TYPE.ERROR, Err> => {
-    const errTkn = token(TOKEN_TYPE.ERROR, "", $line, $column);
     $error = lexicalError(message, $line, $column);
     return token(TOKEN_TYPE.ERROR, "", $line, $column).withLiteral($error);
   };
@@ -897,13 +871,14 @@ export function lexical(code: string) {
             digits = 0;
           } else {
             return errorToken(
-              'Expected 3 ASCII digits before the separator "_"'
+              'Expected 3 ASCII digits after the separator "_"'
             );
           }
         }
       }
+      // there must be 3 ASCII digits after the "_"
       if (digits !== 3) {
-        return errorToken('Expected 3 ASCII digits before the separator "_"');
+        return errorToken('Expected 3 ASCII digits after the separator "_"');
       }
     }
 
@@ -1057,6 +1032,10 @@ export function lexical(code: string) {
         return tkn(match("=") ? TOKEN_TYPE.GREATER_EQUAL : TOKEN_TYPE.GREATER);
       case '"':
         return stringToken();
+      case "+":
+        return tkn(match("+") ? TOKEN_TYPE.PLUS_PLUS : TOKEN_TYPE.PLUS);
+
+      // Special handling of dot for vector operators.
       case ".": {
         if (match("+")) {
           return tkn(TOKEN_TYPE.DOT_ADD);
@@ -1070,6 +1049,8 @@ export function lexical(code: string) {
           return tkn(TOKEN_TYPE.DOT);
         }
       }
+
+      // Special handling of dash for inline comments.
       case "-": {
         if (peek() === "-" && peekNext() === "-") {
           while (peek() !== "\n" && !atEnd()) {
@@ -1080,10 +1061,8 @@ export function lexical(code: string) {
           return tkn(match("-") ? TOKEN_TYPE.MINUS_MINUS : TOKEN_TYPE.MINUS);
         }
       }
-      case "+": {
-        return tkn(match("+") ? TOKEN_TYPE.PLUS_PLUS : TOKEN_TYPE.PLUS);
-      }
 
+      // special handling of '=' for block comments.
       case "=": {
         if (peek() === "=" && peekNext() === "=") {
           while (peek() === "=") tick();
@@ -1147,4 +1126,3 @@ export function lexical(code: string) {
 
   return { stream, scan, atEnd };
 }
-
