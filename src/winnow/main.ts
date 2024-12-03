@@ -167,7 +167,7 @@ enum TOKEN_TYPE {
   // Literals
   SYMBOL,
   STRING,
-  BOOLEAN,
+  // BOOLEAN,
   INTEGER,
   FLOAT,
   FRACTION,
@@ -1148,6 +1148,9 @@ interface Visitor<T> {
   // Statements
   expressionStatement(node: ExpressionStatement): T;
   blockStatement(node: BlockStatement): T;
+  fnStatement(node: FnStatement): T;
+  ifStatement(node: IfStatement): T;
+  printStatement(node: PrintStatement): T;
   // Expressions
   integer(node: Integer): T;
   float(node: Float): T;
@@ -1157,17 +1160,22 @@ interface Visitor<T> {
   string(node: StringLiteral): T;
   variable(node: Variable): T;
   logicalBinaryExpression(node: LogicalBinaryExpression): T;
+  logicalUnaryExpression(node: LogicalUnaryExpression): T;
   relationExpression(node: RelationExpression): T;
   algebraicBinaryExpression(node: AlgebraicBinaryExpression): T;
   algebraicUnaryExpression(node: AlgebraicUnaryExpression): T;
   groupExpression(node: GroupExpression): T;
   assignmentExpression(node: AssignmentExpression): T;
+  tupleExpression(node: TupleExpression): T;
 }
 
 enum NODEKIND {
   // Statements
   EXPRESSION_STATEMENT,
   BLOCK_STATEMENT,
+  FN_STATEMENT,
+  IF_STATEMENT,
+  PRINT_STATEMENT,
   // Expressions
   INTEGER,
   FLOAT,
@@ -1177,11 +1185,13 @@ enum NODEKIND {
   STRING,
   VARIABLE,
   LOGICAL_INFIX,
+  LOGICAL_UNARY_EXPRESSION,
   ALGEBRAIC_INFIX,
   ALGEBRAIC_UNARY_EXPRESSION,
   RELATION,
   GROUP_EXPRESSION,
   ASSIGNMENT_EXPRESSION,
+  TUPLE_EXPRESSION,
 }
 
 abstract class TREENODE {
@@ -1238,7 +1248,87 @@ class BlockStatement extends Statement {
     this.$statements = statements;
   }
 }
-const blockStmt = (statements: Statement[]) => new BlockStatement(statements);
+const blockStatement = (statements: Statement[]) =>
+  new BlockStatement(statements);
+
+const isBlockStatement = (node: TREENODE): node is BlockStatement =>
+  node.kind === NODEKIND.BLOCK_STATEMENT;
+
+class FnStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.fnStatement(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.FN_STATEMENT;
+  }
+  $name: Token<TOKEN_TYPE.SYMBOL>;
+  $params: Variable[];
+  $body: Statement[];
+  constructor(
+    name: Token<TOKEN_TYPE.SYMBOL>,
+    params: Variable[],
+    body: Statement[]
+  ) {
+    super();
+    this.$name = name;
+    this.$params = params;
+    this.$body = body;
+  }
+}
+const fnStatement = (
+  name: Token<TOKEN_TYPE.SYMBOL>,
+  params: Variable[],
+  body: Statement[]
+) => new FnStatement(name, params, body);
+
+class IfStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.ifStatement(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.IF_STATEMENT;
+  }
+  $keyword: Token;
+  $condition: Expression;
+  $then: Statement;
+  $alt: Statement;
+  constructor(
+    keyword: Token,
+    condition: Expression,
+    then: Statement,
+    alt: Statement
+  ) {
+    super();
+    this.$keyword = keyword;
+    this.$condition = condition;
+    this.$then = then;
+    this.$alt = alt;
+  }
+}
+const ifStatement = (
+  keyword: Token,
+  condition: Expression,
+  then: Statement,
+  alt: Statement
+) => new IfStatement(keyword, condition, then, alt);
+
+class PrintStatement extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.printStatement(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.PRINT_STATEMENT;
+  }
+  $keyword: Token;
+  $expression: Expression;
+  constructor(keyword: Token, expression: Expression) {
+    super();
+    this.$keyword = keyword;
+    this.$expression = expression;
+  }
+}
+const printStatement = (keyword: Token, expression: Expression) =>
+  new PrintStatement(keyword, expression);
 
 abstract class Expression extends ASTNode {
   isStatement(): this is Statement {
@@ -1579,6 +1669,57 @@ const algebraicUnaryExpression = (
   arg: Expression
 ) => new AlgebraicUnaryExpression(op, arg);
 
+type LogicalUnaryOperator = TOKEN_TYPE.NOT;
+
+class LogicalUnaryExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.logicalUnaryExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.LOGICAL_UNARY_EXPRESSION;
+  }
+  toString(): string {
+    return `not ${this.$arg.toString()}`;
+  }
+  $op: Token<LogicalUnaryOperator>;
+  $arg: Expression;
+  constructor(op: Token<LogicalUnaryOperator>, arg: Expression) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+}
+
+const logicUnary = (op: Token<LogicalUnaryOperator>, arg: Expression) =>
+  new LogicalUnaryExpression(op, arg);
+
+class TupleExpression extends Expression {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.tupleExpression(this);
+  }
+  get kind(): NODEKIND {
+    return NODEKIND.TUPLE_EXPRESSION;
+  }
+  toString(): string {
+    let out = "(";
+    this.$elements.forEach((e, i) => {
+      out += e.toString();
+      if (i % 2 === 0 && i !== this.$elements.length) {
+        out += ",";
+      }
+    });
+    out += ")";
+    return out;
+  }
+  $elements: Expression[];
+  constructor(elements: Expression[]) {
+    super();
+    this.$elements = elements;
+  }
+}
+const tupleExpression = (elements: Expression[]) =>
+  new TupleExpression(elements);
+
 class ParserState<STMT extends TREENODE, EXPR extends TREENODE> {
   /**
    * Property bound to the current error status.
@@ -1811,11 +1952,60 @@ export function syntax(source: string) {
     });
   };
 
+  /** Parses a logical infix expression. */
+  const logicInfix = (op: Token, lhs: Expression) => {
+    return expr(precof(op.$type)).chain((rhs) => {
+      return state.newExpression(
+        logicalBinex(lhs, op as Token<BinaryLogicOperator>, rhs)
+      );
+    });
+  };
+
+  /** Parses a logical not expression. */
+  const logicNot: Parslet<Expression> = (op) => {
+    return expr(precof(op.$type)).chain((arg) => {
+      return state.newExpression(
+        logicUnary(op as Token<LogicalUnaryOperator>, arg)
+      );
+    });
+  };
+
+  const booleanLiteral: Parslet<Expression> = (op) => {
+    if (typeof op.$literal === "boolean") {
+      return state.newExpression(bool(op.$literal));
+    } else {
+      return state.error("Unexpected boolean literal");
+    }
+  };
+
+  const primary = (op: Token) => {
+    const innerExpression = expr();
+    if (innerExpression.isLeft()) return innerExpression;
+    if (state.nextIs(TOKEN_TYPE.COMMA)) {
+      const elements: Expression[] = [innerExpression.unwrap()];
+      do {
+        const e = expr();
+        if (e.isLeft()) return e;
+        elements.push(e.unwrap());
+      } while (state.nextIs(TOKEN_TYPE.COMMA));
+      if (!state.nextIs(TOKEN_TYPE.RIGHT_PAREN)) {
+        return state.error('Expected ")" to close the tuple.');
+      }
+      return state.newExpression(tupleExpression(elements));
+    }
+    if (!state.nextIs(TOKEN_TYPE.RIGHT_PAREN)) {
+      return state.error(
+        `On line ${op.$line}: Expected ")" to close the expression.`
+      );
+    }
+    return innerExpression.map((e) => groupExpression(e));
+  };
+
   const rules: BPTable<Expression> = {
     [TOKEN_TYPE.END]: [___, ___, ___o],
     [TOKEN_TYPE.ERROR]: [___, ___, ___o],
     [TOKEN_TYPE.EMPTY]: [___, ___, ___o],
-    [TOKEN_TYPE.LEFT_PAREN]: [___, ___, ___o],
+    [TOKEN_TYPE.LEFT_PAREN]: [primary, ___, BP.CALL],
     [TOKEN_TYPE.RIGHT_PAREN]: [___, ___, ___o],
     [TOKEN_TYPE.LEFT_BRACE]: [___, ___, ___o],
     [TOKEN_TYPE.RIGHT_BRACE]: [___, ___, ___o],
@@ -1851,6 +2041,15 @@ export function syntax(source: string) {
     [TOKEN_TYPE.BANG_EQUAL]: [___, comparison, BP.REL],
     [TOKEN_TYPE.EQUAL_EQUAL]: [___, comparison, BP.REL],
 
+    // logical binary expressions
+    [TOKEN_TYPE.AND]: [___, logicInfix, BP.AND],
+    [TOKEN_TYPE.OR]: [___, logicInfix, BP.OR],
+    [TOKEN_TYPE.NAND]: [___, logicInfix, BP.NAND],
+    [TOKEN_TYPE.XOR]: [___, logicInfix, BP.XOR],
+    [TOKEN_TYPE.XNOR]: [___, logicInfix, BP.XNOR],
+    [TOKEN_TYPE.NOR]: [___, logicInfix, BP.NOR],
+    [TOKEN_TYPE.NOT]: [logicNot, ___, BP.NOT],
+
     // Vector expressions
     [TOKEN_TYPE.PLUS_PLUS]: [___, ___, ___o],
     [TOKEN_TYPE.MINUS_MINUS]: [___, ___, ___o],
@@ -1864,27 +2063,23 @@ export function syntax(source: string) {
     [TOKEN_TYPE.POUND_MINUS]: [___, ___, ___o],
     [TOKEN_TYPE.POUND_STAR]: [___, ___, ___o],
     [TOKEN_TYPE.SYMBOL]: [___, ___, ___o],
+
+    // Literals
     [TOKEN_TYPE.STRING]: [string, ___, BP.ATOM],
-    [TOKEN_TYPE.BOOLEAN]: [___, ___, ___o],
     [TOKEN_TYPE.INTEGER]: [number, ___, BP.ATOM],
     [TOKEN_TYPE.FLOAT]: [number, ___, BP.ATOM],
+    [TOKEN_TYPE.FALSE]: [booleanLiteral, ___, BP.ATOM],
+    [TOKEN_TYPE.TRUE]: [booleanLiteral, ___, BP.ATOM],
     [TOKEN_TYPE.FRACTION]: [___, ___, ___o],
     [TOKEN_TYPE.SCIENTIFIC]: [___, ___, ___o],
     [TOKEN_TYPE.BIG_NUMBER]: [___, ___, ___o],
-    [TOKEN_TYPE.FALSE]: [___, ___, ___o],
-    [TOKEN_TYPE.TRUE]: [___, ___, ___o],
+
     [TOKEN_TYPE.NAN]: [___, ___, ___o],
     [TOKEN_TYPE.INF]: [___, ___, ___o],
     [TOKEN_TYPE.NIL]: [___, ___, ___o],
     [TOKEN_TYPE.NUMERIC_CONSTANT]: [___, ___, ___o],
     [TOKEN_TYPE.ALGEBRAIC]: [___, ___, ___o],
-    [TOKEN_TYPE.AND]: [___, ___, ___o],
-    [TOKEN_TYPE.OR]: [___, ___, ___o],
-    [TOKEN_TYPE.NOT]: [___, ___, ___o],
-    [TOKEN_TYPE.NAND]: [___, ___, ___o],
-    [TOKEN_TYPE.XOR]: [___, ___, ___o],
-    [TOKEN_TYPE.XNOR]: [___, ___, ___o],
-    [TOKEN_TYPE.NOR]: [___, ___, ___o],
+
     [TOKEN_TYPE.IF]: [___, ___, ___o],
     [TOKEN_TYPE.ELSE]: [___, ___, ___o],
     [TOKEN_TYPE.FN]: [___, ___, ___o],
@@ -1955,3 +2150,4 @@ export function syntax(source: string) {
     },
   };
 }
+
