@@ -118,11 +118,11 @@ class Right<T> {
 const right = <T>(x: T) => new Right(x);
 
 type NumberTokenType =
-  | TOKEN_TYPE.INTEGER
-  | TOKEN_TYPE.FLOAT
-  | TOKEN_TYPE.BIG_NUMBER
-  | TOKEN_TYPE.SCIENTIFIC
-  | TOKEN_TYPE.FRACTION;
+  | token_type.integer
+  | token_type.float
+  | token_type.big_number
+  | token_type.scientific
+  | token_type.fraction;
 
 type ErrorType =
   | "lexical-error"
@@ -228,101 +228,101 @@ function isNull(x: any): x is null {
 
 // § Token Types
 
-enum TOKEN_TYPE {
+enum token_type {
   // Utility tokens
-  END,
-  ERROR,
-  EMPTY,
+  end,
+  error,
+  empty,
   // Paired Delimiters
-  LEFT_PAREN,
-  RIGHT_PAREN,
-  LEFT_BRACE,
-  RIGHT_BRACE,
-  LEFT_BRACKET,
-  RIGHT_BRACKET,
+  left_paren,
+  right_paren,
+  left_brace,
+  right_brace,
+  left_bracket,
+  right_bracket,
   // Single Delimiters
-  SEMICOLON,
-  COLON,
-  DOT,
-  COMMA,
+  semicolon,
+  colon,
+  dot,
+  comma,
   // Operator Delimiters
-  PLUS,
-  MINUS,
-  STAR,
-  SLASH,
-  CARET,
-  PERCENT,
-  BANG,
-  AMPERSAND,
-  TILDE,
-  VBAR,
-  EQUAL,
-  LESS,
-  GREATER,
-  LESS_EQUAL,
-  GREATER_EQUAL,
-  BANG_EQUAL,
-  EQUAL_EQUAL,
-  PLUS_PLUS,
-  MINUS_MINUS,
-  STAR_STAR,
+  plus,
+  minus,
+  star,
+  slash,
+  caret,
+  percent,
+  bang,
+  ampersand,
+  tilde,
+  vbar,
+  equal,
+  less,
+  greater,
+  less_equal,
+  greater_equal,
+  bang_equal,
+  equal_equal,
+  plus_plus,
+  minus_minus,
+  star_star,
   // Vector Operators
-  DOT_ADD,
-  DOT_STAR,
-  DOT_MINUS,
-  DOT_CARET,
-  AT,
+  dot_add,
+  dot_star,
+  dot_minus,
+  dot_caret,
+  at,
   // Matrix Operators
-  POUND_PLUS, // '#+'
-  POUND_MINUS, // '#-
-  POUND_STAR, // '#*'
+  pound_plus, // '#+'
+  pound_minus, // '#-
+  pound_star, // '#*'
   // Literals
-  SYMBOL,
-  STRING,
+  symbol,
+  string,
   // BOOLEAN,
-  INTEGER,
-  FLOAT,
-  FRACTION,
-  SCIENTIFIC,
-  BIG_NUMBER,
-  FALSE,
-  TRUE,
-  NAN,
-  INF,
-  NIL,
-  NUMERIC_CONSTANT,
-  ALGEBRAIC,
+  integer,
+  float,
+  fraction,
+  scientific,
+  big_number,
+  false,
+  true,
+  nan,
+  inf,
+  nil,
+  numeric_constant,
+  algebraic,
   // Keyword Tokens
-  AND,
-  OR,
-  NOT,
-  NAND,
-  XOR,
-  XNOR,
-  NOR,
-  IF,
-  ELSE,
-  FN,
-  LET,
-  VAR,
-  RETURN,
-  WHILE,
-  FOR,
-  CLASS,
-  PRINT,
-  SUPER,
-  THIS,
-  REM,
-  MOD,
-  DIV,
-  NATIVE,
+  and,
+  or,
+  not,
+  nand,
+  xor,
+  xnor,
+  nor,
+  if,
+  else,
+  fn,
+  let,
+  var,
+  return,
+  while,
+  for,
+  class,
+  print,
+  super,
+  this,
+  rem,
+  mod,
+  div,
+  native,
 }
 
 // § Token Object
 
 /** An object corresponding to a token in Winnow. */
 class Token<
-  T extends TOKEN_TYPE = TOKEN_TYPE,
+  T extends token_type = token_type,
   L extends PRIMITIVE = PRIMITIVE
 > {
   /** This token's type. */
@@ -357,7 +357,7 @@ class Token<
    * @param tokenType The new token type.
    * @returns A copy of this token with the given token type.
    */
-  withType<X extends TOKEN_TYPE>(tokenType: X) {
+  withType<X extends token_type>(tokenType: X) {
     const out = this.copy();
     out.$type = tokenType as any;
     return out as any as Token<X, L>;
@@ -421,8 +421,8 @@ class Token<
    * be an accompanying Err object in its $literal
    * field.
    */
-  isErrorToken(): this is Token<TOKEN_TYPE.ERROR, Err> {
-    return this.$type === TOKEN_TYPE.ERROR;
+  isErrorToken(): this is Token<token_type.error, Err> {
+    return this.$type === token_type.error;
   }
 
   /**
@@ -443,26 +443,26 @@ class Token<
    */
   isRightDelimiter() {
     return (
-      this.$type === TOKEN_TYPE.RIGHT_PAREN ||
-      this.$type === TOKEN_TYPE.RIGHT_BRACE ||
-      this.$type === TOKEN_TYPE.RIGHT_BRACKET
+      this.$type === token_type.right_paren ||
+      this.$type === token_type.right_brace ||
+      this.$type === token_type.right_bracket
     );
   }
 
   /** The empty token, used as a placeholder. */
-  static empty: Token<TOKEN_TYPE, any> = new Token(
-    TOKEN_TYPE.EMPTY,
+  static empty: Token<token_type, any> = new Token(
+    token_type.empty,
     "",
     -1,
     -1
   );
 
   /** The end token, marking the end of input. */
-  static end: Token<TOKEN_TYPE, any> = new Token(TOKEN_TYPE.END, "END", -1, -1);
+  static end: Token<token_type, any> = new Token(token_type.end, "END", -1, -1);
 
   /** Returns a string form of this token. */
   toString() {
-    return `{token: ${TOKEN_TYPE[this.$type]}, lexeme: ${this.$lexeme}, line: ${
+    return `{token: ${token_type[this.$type]}, lexeme: ${this.$lexeme}, line: ${
       this.$line
     }, column: ${this.$column}, literal: ${this.$literal}}`;
   }
@@ -476,7 +476,7 @@ class Token<
  * @param column The column where this token was first encountered.
  * @returns A new instance of Token.
  */
-function token<X extends TOKEN_TYPE>(
+function token<X extends token_type>(
   type: X,
   lexeme: string,
   line: number,
@@ -575,7 +575,7 @@ export function lexical(code: string) {
    * @param lexeme The token's lexeme.
    * @returns A new Token.
    */
-  const tkn = (type: TOKEN_TYPE, lexeme: string = ""): Token => {
+  const tkn = (type: token_type, lexeme: string = ""): Token => {
     lexeme = lexeme ? lexeme : slice();
     return token(type, lexeme, $line, $column);
   };
@@ -586,11 +586,11 @@ export function lexical(code: string) {
    * cease.
    * @param message The error message to accompany
    * the Err object.
-   * @returns A new Token of type TOKEN_TYPE.ERROR.
+   * @returns A new Token of type token_type.ERROR.
    */
-  const errorToken = (message: string): Token<TOKEN_TYPE.ERROR, Err> => {
+  const errorToken = (message: string): Token<token_type.error, Err> => {
     $error = lexicalError(message, $line, $column);
-    return token(TOKEN_TYPE.ERROR, "", $line, $column).withLiteral($error);
+    return token(token_type.error, "", $line, $column).withLiteral($error);
   };
 
   /**
@@ -706,33 +706,33 @@ export function lexical(code: string) {
 
   /** Dictionary of keywords to tokens. */
   const dictionary: Record<string, () => Token> = {
-    this: () => tkn(TOKEN_TYPE.THIS),
-    super: () => tkn(TOKEN_TYPE.SUPER),
-    class: () => tkn(TOKEN_TYPE.CLASS),
-    false: () => tkn(TOKEN_TYPE.FALSE).withLiteral(false),
-    true: () => tkn(TOKEN_TYPE.TRUE).withLiteral(true),
-    NaN: () => tkn(TOKEN_TYPE.NAN).withLiteral(NaN),
-    Inf: () => tkn(TOKEN_TYPE.INF).withLiteral(Infinity),
-    return: () => tkn(TOKEN_TYPE.RETURN),
-    while: () => tkn(TOKEN_TYPE.WHILE),
-    for: () => tkn(TOKEN_TYPE.FOR),
-    let: () => tkn(TOKEN_TYPE.LET),
-    var: () => tkn(TOKEN_TYPE.VAR),
-    fn: () => tkn(TOKEN_TYPE.FN),
-    if: () => tkn(TOKEN_TYPE.IF),
-    else: () => tkn(TOKEN_TYPE.ELSE),
-    print: () => tkn(TOKEN_TYPE.PRINT),
-    rem: () => tkn(TOKEN_TYPE.REM),
-    mod: () => tkn(TOKEN_TYPE.MOD),
-    div: () => tkn(TOKEN_TYPE.DIV),
-    nil: () => tkn(TOKEN_TYPE.NIL),
-    and: () => tkn(TOKEN_TYPE.AND),
-    or: () => tkn(TOKEN_TYPE.OR),
-    nor: () => tkn(TOKEN_TYPE.NOR),
-    xor: () => tkn(TOKEN_TYPE.XOR),
-    xnor: () => tkn(TOKEN_TYPE.XNOR),
-    not: () => tkn(TOKEN_TYPE.NOT),
-    nand: () => tkn(TOKEN_TYPE.NAND),
+    this: () => tkn(token_type.this),
+    super: () => tkn(token_type.super),
+    class: () => tkn(token_type.class),
+    false: () => tkn(token_type.false).withLiteral(false),
+    true: () => tkn(token_type.true).withLiteral(true),
+    NaN: () => tkn(token_type.nan).withLiteral(NaN),
+    Inf: () => tkn(token_type.inf).withLiteral(Infinity),
+    return: () => tkn(token_type.return),
+    while: () => tkn(token_type.while),
+    for: () => tkn(token_type.for),
+    let: () => tkn(token_type.let),
+    var: () => tkn(token_type.var),
+    fn: () => tkn(token_type.fn),
+    if: () => tkn(token_type.if),
+    else: () => tkn(token_type.else),
+    print: () => tkn(token_type.print),
+    rem: () => tkn(token_type.rem),
+    mod: () => tkn(token_type.mod),
+    div: () => tkn(token_type.div),
+    nil: () => tkn(token_type.nil),
+    and: () => tkn(token_type.and),
+    or: () => tkn(token_type.or),
+    nor: () => tkn(token_type.nor),
+    xor: () => tkn(token_type.xor),
+    xnor: () => tkn(token_type.xnor),
+    not: () => tkn(token_type.not),
+    nand: () => tkn(token_type.nand),
   };
 
   /**
@@ -778,11 +778,11 @@ export function lexical(code: string) {
     const word = slice();
     const native = nativeFunctions[word as NativeFn];
     if (native) {
-      return tkn(TOKEN_TYPE.NATIVE);
+      return tkn(token_type.native);
     } else if (dictionary[word]) {
       return dictionary[word]();
     } else {
-      return tkn(TOKEN_TYPE.SYMBOL);
+      return tkn(token_type.symbol);
     }
   };
 
@@ -800,7 +800,7 @@ export function lexical(code: string) {
   const bigNumberToken = () => {
     while (isDigit(peek()) && !atEnd()) tick();
     const n = slice().replace("#", "");
-    return tkn(TOKEN_TYPE.BIG_NUMBER).withLiteral(BigInt(n));
+    return tkn(token_type.big_number).withLiteral(BigInt(n));
   };
 
   /**
@@ -816,7 +816,7 @@ export function lexical(code: string) {
     }
     const numberString = slice().replace("0b", "");
     const integerValue = Number.parseInt(numberString, 2);
-    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+    return tkn(token_type.integer).withLiteral(integerValue);
   };
 
   /**
@@ -832,7 +832,7 @@ export function lexical(code: string) {
     }
     const numberString = slice().replace("0o", "");
     const integerValue = Number.parseInt(numberString, 8);
-    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+    return tkn(token_type.integer).withLiteral(integerValue);
   };
 
   /**
@@ -848,7 +848,7 @@ export function lexical(code: string) {
     }
     const numberString = slice().replace("0x", "");
     const integerValue = Number.parseInt(numberString, 16);
-    return tkn(TOKEN_TYPE.INTEGER).withLiteral(integerValue);
+    return tkn(token_type.integer).withLiteral(integerValue);
   };
 
   /** Generates number token. */
@@ -860,7 +860,7 @@ export function lexical(code: string) {
     const n = hasSeparators ? numberString.replaceAll("_", "") : numberString;
     switch (type) {
       // handle integers
-      case TOKEN_TYPE.INTEGER: {
+      case token_type.integer: {
         const num = Number.parseInt(n);
         if (num > Number.MAX_SAFE_INTEGER) {
           return errorToken(
@@ -871,7 +871,7 @@ export function lexical(code: string) {
         }
       }
       // handle floats
-      case TOKEN_TYPE.FLOAT: {
+      case token_type.float: {
         const num = Number.parseFloat(n);
         if (num > Number.MAX_VALUE) {
           return errorToken(
@@ -880,14 +880,14 @@ export function lexical(code: string) {
         }
       }
       // handle fractions
-      case TOKEN_TYPE.FRACTION: {
+      case token_type.fraction: {
         const [a, b] = n.split("|");
         const N = Number.parseInt(a);
         const D = Number.parseInt(b);
         return tkn(type).withLiteral(fraction(N, D));
       }
       // handle scientific numbers
-      case TOKEN_TYPE.SCIENTIFIC: {
+      case token_type.scientific: {
         const [a, b] = n.split("E");
         const base = Number.parseFloat(a);
         const exponent = Number.parseInt(b);
@@ -932,7 +932,7 @@ export function lexical(code: string) {
     // handle floating point numbers
     if (peekIs(".") && isDigit(peekNext())) {
       tick();
-      type = TOKEN_TYPE.FLOAT;
+      type = token_type.float;
       while (isDigit(peek()) && !atEnd()) {
         tick();
       }
@@ -940,10 +940,10 @@ export function lexical(code: string) {
 
     // handle fractions
     if (peekIs("|")) {
-      if (type !== TOKEN_TYPE.INTEGER) {
+      if (type !== token_type.integer) {
         return errorToken('Expected an integer before "|"');
       }
-      type = TOKEN_TYPE.FRACTION;
+      type = token_type.fraction;
       tick();
       while (isDigit(peek()) && !atEnd()) {
         tick();
@@ -953,14 +953,14 @@ export function lexical(code: string) {
 
     if (peekIs("E")) {
       if (isDigit(peekNext())) {
-        type = TOKEN_TYPE.SCIENTIFIC;
+        type = token_type.scientific;
         tick();
         while (isDigit(peek())) tick();
       } else if (
         (peekNext() === "+" || peekNext() === "-") &&
         isDigit(lookup(2))
       ) {
-        type = TOKEN_TYPE.SCIENTIFIC;
+        type = token_type.scientific;
         tick();
         tick();
         while (isDigit(peek())) tick();
@@ -986,7 +986,7 @@ export function lexical(code: string) {
     if (atEnd()) return errorToken("Unterminated string");
     tick();
     const lex = slice().slice(1, -1);
-    return tkn(TOKEN_TYPE.STRING, lex);
+    return tkn(token_type.string, lex);
   };
 
   const scan = (): Token => {
@@ -999,7 +999,7 @@ export function lexical(code: string) {
 
     // If we've reached the end of the source code,
     // immediately return an END token.
-    if (atEnd()) return tkn(TOKEN_TYPE.END, "END");
+    if (atEnd()) return tkn(token_type.end, "END");
 
     // Now get the current character and move the
     // scanner forward.
@@ -1016,11 +1016,11 @@ export function lexical(code: string) {
       if (isDigit(peek())) {
         return bigNumberToken();
       } else if (match("+")) {
-        return tkn(TOKEN_TYPE.POUND_PLUS);
+        return tkn(token_type.pound_plus);
       } else if (match("-")) {
-        return tkn(TOKEN_TYPE.POUND_MINUS);
+        return tkn(token_type.pound_minus);
       } else if (match("*")) {
-        return tkn(TOKEN_TYPE.POUND_STAR);
+        return tkn(token_type.pound_star);
       } else {
         return errorToken('Expected digits after "#".');
       }
@@ -1035,65 +1035,65 @@ export function lexical(code: string) {
       } else if (char === "0" && match("x")) {
         return hexNumberToken();
       } else {
-        return numberToken(TOKEN_TYPE.INTEGER);
+        return numberToken(token_type.integer);
       }
     }
     switch (char) {
       case ":":
-        return tkn(TOKEN_TYPE.COLON);
+        return tkn(token_type.colon);
       case "&":
-        return tkn(TOKEN_TYPE.AMPERSAND);
+        return tkn(token_type.ampersand);
       case "~":
-        return tkn(TOKEN_TYPE.TILDE);
+        return tkn(token_type.tilde);
       case "|":
-        return tkn(TOKEN_TYPE.VBAR);
+        return tkn(token_type.vbar);
       case "(":
-        return tkn(TOKEN_TYPE.LEFT_PAREN);
+        return tkn(token_type.left_paren);
       case ")":
-        return tkn(TOKEN_TYPE.RIGHT_PAREN);
+        return tkn(token_type.right_paren);
       case "[":
-        return tkn(TOKEN_TYPE.LEFT_BRACKET);
+        return tkn(token_type.left_bracket);
       case "]":
-        return tkn(TOKEN_TYPE.RIGHT_BRACKET);
+        return tkn(token_type.right_bracket);
       case "{":
-        return tkn(TOKEN_TYPE.LEFT_BRACE);
+        return tkn(token_type.left_brace);
       case "}":
-        return tkn(TOKEN_TYPE.RIGHT_BRACE);
+        return tkn(token_type.right_brace);
       case ",":
-        return tkn(TOKEN_TYPE.COMMA);
+        return tkn(token_type.comma);
       case "*":
-        return tkn(TOKEN_TYPE.STAR);
+        return tkn(token_type.star);
       case ";":
-        return tkn(TOKEN_TYPE.SEMICOLON);
+        return tkn(token_type.semicolon);
       case "%":
-        return tkn(TOKEN_TYPE.PERCENT);
+        return tkn(token_type.percent);
       case "/":
-        return tkn(TOKEN_TYPE.SLASH);
+        return tkn(token_type.slash);
       case "^":
-        return tkn(TOKEN_TYPE.CARET);
+        return tkn(token_type.caret);
       case "!":
-        return tkn(match("=") ? TOKEN_TYPE.BANG_EQUAL : TOKEN_TYPE.BANG);
+        return tkn(match("=") ? token_type.bang_equal : token_type.bang);
       case "<":
-        return tkn(match("=") ? TOKEN_TYPE.LESS_EQUAL : TOKEN_TYPE.LESS);
+        return tkn(match("=") ? token_type.less_equal : token_type.less);
       case ">":
-        return tkn(match("=") ? TOKEN_TYPE.GREATER_EQUAL : TOKEN_TYPE.GREATER);
+        return tkn(match("=") ? token_type.greater_equal : token_type.greater);
       case '"':
         return stringToken();
       case "+":
-        return tkn(match("+") ? TOKEN_TYPE.PLUS_PLUS : TOKEN_TYPE.PLUS);
+        return tkn(match("+") ? token_type.plus_plus : token_type.plus);
 
       // Special handling of dot for vector operators.
       case ".": {
         if (match("+")) {
-          return tkn(TOKEN_TYPE.DOT_ADD);
+          return tkn(token_type.dot_add);
         } else if (match("-")) {
-          return tkn(TOKEN_TYPE.DOT_MINUS);
+          return tkn(token_type.dot_minus);
         } else if (match("*")) {
-          return tkn(TOKEN_TYPE.DOT_STAR);
+          return tkn(token_type.dot_star);
         } else if (match("^")) {
-          return tkn(TOKEN_TYPE.DOT_CARET);
+          return tkn(token_type.dot_caret);
         } else {
-          return tkn(TOKEN_TYPE.DOT);
+          return tkn(token_type.dot);
         }
       }
 
@@ -1105,7 +1105,7 @@ export function lexical(code: string) {
           }
           return Token.empty;
         } else {
-          return tkn(match("-") ? TOKEN_TYPE.MINUS_MINUS : TOKEN_TYPE.MINUS);
+          return tkn(match("-") ? token_type.minus_minus : token_type.minus);
         }
       }
 
@@ -1125,7 +1125,7 @@ export function lexical(code: string) {
           while (peek() === "=") tick();
           return Token.empty;
         } else {
-          return tkn(match("=") ? TOKEN_TYPE.EQUAL_EQUAL : TOKEN_TYPE.EQUAL);
+          return tkn(match("=") ? token_type.equal_equal : token_type.equal);
         }
       }
     }
@@ -1136,7 +1136,7 @@ export function lexical(code: string) {
     const out: Token[] = [];
     let prev = Token.empty;
     let now = scan();
-    if (!now.isType(TOKEN_TYPE.EMPTY)) {
+    if (!now.isType(token_type.empty)) {
       out.push(now);
     } else if ($error !== null) {
       return left($error);
@@ -1152,7 +1152,7 @@ export function lexical(code: string) {
       if ($error !== null) {
         return left($error);
       }
-      if (k.isType(TOKEN_TYPE.EMPTY)) {
+      if (k.isType(token_type.empty)) {
         continue;
       } else {
         peek = k;
@@ -1160,7 +1160,7 @@ export function lexical(code: string) {
       // remove trailing commas
       if (
         prev.isRightDelimiter() &&
-        now.isType(TOKEN_TYPE.COMMA) &&
+        now.isType(token_type.comma) &&
         peek.isRightDelimiter()
       ) {
         continue;
