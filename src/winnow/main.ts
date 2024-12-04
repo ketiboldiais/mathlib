@@ -1187,7 +1187,7 @@ enum nodekind {
   return_statement,
   variable_declaration,
   vector_binex,
-  loop_statement,
+  while_statement,
   algebra_string,
   tuple_expression,
   vector_expression,
@@ -1226,6 +1226,7 @@ interface Visitor<T> {
   printStmt(node: PrintStmt): T;
   returnStmt(node: ReturnStmt): T;
   variableStmt(node: VariableStmt): T;
+  whileStmt(node: WhileStmt): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1458,6 +1459,34 @@ function varStmt(symbol: Sym, value: Expr) {
 /** Returns a new 'let' statement node. */
 function letStmt(symbol: Sym, value: Expr) {
   return new VariableStmt(symbol, value, false);
+}
+
+
+/** An AST node corresponding to a while statement. */
+class WhileStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.whileStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.while_statement;
+  }
+  toString(): string {
+    return 'while-statement';
+  }
+  $keyword: Token;
+  $condition: Expr;
+  $body: Statement;
+  constructor(keyword: Token, condition: Expr, body: Statement) {
+    super();
+    this.$keyword = keyword;
+    this.$condition = condition;
+    this.$body = body;
+  }
+}
+
+/** Returns a new while statement node. */
+function whileStmt(keyword: Token, condition: Expr, body: Statement) {
+  return new WhileStmt(keyword, condition, body);
 }
 
 /** A node corresponding to an expression node. */
