@@ -675,7 +675,7 @@ enum token_type {
   float,
   fraction,
   scientific,
-  big_number,
+  big_integer,
   false,
   true,
   nan,
@@ -1193,7 +1193,7 @@ export function lexical(code: string) {
   const bigNumberToken = () => {
     while (isDigit(peek()) && !atEnd()) tick();
     const n = slice().replace("#", "");
-    return tkn(token_type.big_number).withLiteral(BigInt(n));
+    return tkn(token_type.big_integer).withLiteral(BigInt(n));
   };
 
   /**
@@ -1626,7 +1626,7 @@ enum nodekind {
   this_expression,
   relation,
   index_expression,
-  big_number,
+  big_integer,
   big_rational,
 }
 
@@ -2043,4 +2043,28 @@ class MatrixExpr extends Expr {
 /** Returns a new matrix expression. */
 function matrixExpr(vectors: VectorExpr[], rowCount: number, colCount: number) {
   return new MatrixExpr(vectors, rowCount, colCount);
+}
+
+
+/** An AST node corresponding to a big integer. */
+class BigInteger extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.bigInteger(this);
+  }
+  kind(): nodekind {
+    return nodekind.big_integer;
+  }
+  toString(): string {
+    return this.$value.toString()
+  }
+  $value: bigint;
+  constructor(value: bigint) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new big integer node. */
+function bigInteger(value: bigint) {
+  return new BigInteger(value);
 }
