@@ -63,6 +63,401 @@ export function treestring<T extends Object>(
   return output;
 }
 
+class None {
+  _tag: "None" = "None";
+  constructor() {}
+  map(f: (a: never) => unknown): None {
+    return new None();
+  }
+}
+
+class Some<T> {
+  readonly value: T;
+  _tag: "Some" = "Some";
+  constructor(value: T) {
+    this.value = value;
+  }
+  map<S>(f: (a: T) => S): Some<S> {
+    return new Some(f(this.value));
+  }
+}
+
+function some<T>(value: T) {
+  return (new Some<T>(value));
+}
+
+function none() {
+  return (new None());
+}
+
+type Option<T> = None | Some<T>;
+
+/** A data structure with two pointers, left and right. */
+class Binode<T> {
+  _data: T | null;
+  private _R: Option<Binode<T>>;
+  private _L: Option<Binode<T>>;
+  constructor(data: T | null) {
+    this._data = data;
+    this._R = none();
+    this._L = none();
+  }
+  /**
+   * Returns a copy of this bnode.
+   */
+  copy() {
+    const out = new Binode(this._data);
+    const left = this._L;
+    const right = this._R;
+    out._L = left;
+    out._R = right;
+    return out;
+  }
+  /**
+   * Flattens this bnode.
+   */
+  flatten(): Binode<T> | T {
+    return this._data === null ? Binode.none<T>() : this._data;
+  }
+  map<K>(callback: (data: T) => K) {
+    if (this._data) {
+      return Binode.some<K>(callback(this._data));
+    } else return Binode.none<K>();
+  }
+  /**
+   * Sets the value of this bnode.
+   */
+  set value(data: T) {
+    this._data = data;
+  }
+
+  do<K>(f: (d: T) => K) {
+    if (this._data !== null) {
+      f(this._data);
+    }
+    return this;
+  }
+  isSomething() {
+    return this._data !== null;
+  }
+  isNothing() {
+    return this._data === null;
+  }
+  static none<T>() {
+    return new Binode<T>(null);
+  }
+  static some<T>(data: T) {
+    return new Binode(data);
+  }
+  get _prev() {
+    if (this._L._tag === "None") {
+      return new Binode<T>(null);
+    } else {
+      return this._L.value;
+    }
+  }
+  set _prev(node: Binode<T>) {
+    this._L = some(node);
+  }
+  get _next() {
+    if (this._R._tag === "None") {
+      return new Binode<T>(null);
+    } else {
+      return this._R.value;
+    }
+  }
+  set _next(node: Binode<T>) {
+    this._R = some(node);
+  }
+  get _left() {
+    return this._prev;
+  }
+  set _left(node: Binode<T>) {
+    this._prev = node;
+  }
+  get _right() {
+    return this._next;
+  }
+  set _right(node: Binode<T>) {
+    this._next = node;
+  }
+}
+
+function binode<T>(data: T | null = null) {
+  return new Binode(data);
+}
+
+class LinkedList<T> {
+  private head: Binode<T>;
+  private tail: Binode<T>;
+  private count: number;
+  cdr() {
+    const list = this.clone();
+    if (list.isEmpty) return list;
+    let previousHead = list.head;
+    if (list.count === 1) {
+      list.head = binode();
+      list.tail = binode();
+    } else {
+      list.head = previousHead._right!;
+      list.head._left = binode();
+      previousHead._right = binode();
+    }
+    list.count--;
+    return list;
+  }
+  car() {
+    if (this.isEmpty) return this;
+    const head = this.head._data!;
+    return new LinkedList<T>().push(head);
+  }
+  clear() {
+    this.head = binode();
+  }
+  get length() {
+    return this.count;
+  }
+  get isEmpty() {
+    return this.count === 0 || this.head.isNothing();
+  }
+  constructor() {
+    this.count = 0;
+    this.head = binode();
+    this.tail = binode();
+  }
+  *[Symbol.iterator](): IterableIterator<T> {
+    let node = this.head;
+    while (node._data !== null) {
+      yield node._data;
+      node = node._right;
+    }
+  }
+  toArray(): T[] {
+    return [...this];
+  }
+  safeIdx(i: number) {
+    return 0 <= i && i < this.count;
+  }
+  set(element: T, at: number) {
+    const node = this.at(at);
+    node._data = element;
+    return this;
+  }
+  private at(index: number) {
+    if (!this.safeIdx(index)) {
+      return binode<T>();
+    } else {
+      let count = 0;
+      let current = this.head;
+      while (count !== index) {
+        let k = current._right;
+        if (k.isNothing()) break;
+        current = k;
+        count++;
+      }
+      return current;
+    }
+  }
+
+  map<K>(f: (data: T, index: number, list: LinkedList<T>) => K) {
+    const list = new LinkedList<K>();
+    this.forEach((d, i, l) => list.push(f(d, i, l)));
+    return list;
+  }
+
+  forEach(
+    f: (data: T, index: number, list: LinkedList<T>) => void,
+  ) {
+    if (this.isEmpty) return this;
+    let node = this.head;
+    let i = 0;
+    while (i < this.count) {
+      node.do((d) => f(d, i, this));
+      node = node._right;
+      i++;
+    }
+  }
+
+  clone() {
+    const list = new LinkedList<T>();
+    this.forEach((d) => list.push(d));
+    return list;
+  }
+  #reduce<X>(
+    from: 0 | 1,
+    reducer: (
+      accumulator: X,
+      currentValue: T,
+      index: number,
+      list: LinkedList<T>,
+    ) => X,
+    initialValue: X,
+  ) {
+    let i = 0;
+    const fn = (list: LinkedList<T>, init: X): X => {
+      if (list.isEmpty) return init;
+      else {
+        const popped = list[from === 0 ? "shift" : "pop"]();
+        if (popped._tag === "None") return init;
+        const updatedValue = reducer(init, popped.value, i++, list);
+        return fn(list, updatedValue);
+      }
+    };
+    return fn(this.clone(), initialValue);
+  }
+  reduceRight<X>(
+    reducer: (
+      accumulator: X,
+      currentValue: T,
+      index: number,
+      list: LinkedList<T>,
+    ) => X,
+    initialValue: X,
+  ): X {
+    return this.#reduce(1, reducer, initialValue);
+  }
+  reduce<X>(
+    reducer: (
+      accumulator: X,
+      currentValue: T,
+      index: number,
+      list: LinkedList<T>,
+    ) => X,
+    initialValue: X,
+  ): X {
+    return this.#reduce(0, reducer, initialValue);
+  }
+
+  /** Returns the string representation of this list, with each element jointed by the given separator (defaults to the empty string). */
+  join(separator: string = "") {
+    return [...this].join(separator);
+  }
+
+  /** Returns th string representation of this list. */
+  toString(f?: (x: T, index: number) => string) {
+    const out = this.clone();
+    const g = f ? f : (x: T, index: number) => x;
+    return out.map((d, i) => g(d, i)).join();
+  }
+
+  /** Returns a new list whose elements satisfy the given predicate. */
+  filter(
+    predicate: (value: T, index: number, list: LinkedList<T>) => boolean,
+  ) {
+    const out = new LinkedList<T>();
+    this.forEach((n, i, list) => predicate(n, i, list) && out.push(n));
+    return out;
+  }
+
+  /** Reverses this list. */
+  reverse() {
+    let current = this.head;
+    let i = 0;
+    while (current.isSomething() && i < this.count) {
+      const right = current._right;
+      current._right = current._left;
+      current._left = right;
+      let k = current._left;
+      if (k.isNothing() || i > this.count) break;
+      current = k;
+      i++;
+    }
+    const tail = this.tail;
+    this.tail = this.head;
+    this.head = tail;
+    return this;
+  }
+
+  /** Returns the element at the given index. */
+  item(index: number) {
+    return this.at(index)._data;
+  }
+
+  zip<K>(list: LinkedList<K>) {
+    const out = new LinkedList<[T, K]>();
+    this.forEach((d, i) => {
+      const x = list.item(i);
+      if (x !== null) {
+        const element: [T, K] = [d, x] as [T, K];
+        out.push(element);
+      }
+    });
+    return out;
+  }
+
+  /** Removes the last element of this list. */
+  pop(): Option<T> {
+    if (this.isEmpty) return none();
+    let popped = this.tail;
+    if (this.length === 1) {
+      this.head = binode();
+      this.tail = binode();
+    } else {
+      this.tail = popped._left;
+      this.tail._right = binode();
+      popped._left = binode();
+    }
+    this.count--;
+    return popped._data === null ? none() : some(popped._data);
+  }
+
+  /** Inserts the given element at the head of this list.*/
+  unshift(element: T) {
+    const node = binode(element);
+    if (this.isEmpty) {
+      this.head = node;
+      this.tail = node;
+    } else {
+      this.head._prev = node;
+      node._next = this.head;
+      this.head = node;
+    }
+    this.count++;
+    return this;
+  }
+
+  /** Removes the first element of this list. */
+  shift() {
+    if (this.isEmpty) return none();
+    const previousHead = this.head;
+    if (this.length === 1) {
+      this.head = binode();
+      this.tail = binode();
+    } else {
+      this.head = previousHead._next;
+      this.head._prev = binode();
+      previousHead._prev = binode();
+    }
+    this.count--;
+    return previousHead._data === null ? none() : some(previousHead._data);
+  }
+
+  /** Inserts the given element to this list. */
+  push(element: T) {
+    const node = binode(element);
+    if (this.head.isNothing()) {
+      this.head = node;
+      this.tail = node;
+    } else {
+      this.tail._next = node;
+      node._prev = this.tail;
+      this.tail = node;
+    }
+    this.count++;
+    return this;
+  }
+
+  /** Inserts the given elements to this list. */
+  append(...elements: T[]) {
+    elements.forEach((e) => this.push(e));
+    return this;
+  }
+}
+
+function linkedList<T>(...elements: T[]) {
+  return new LinkedList<T>().append(...elements);
+}
+
 type Either<A, B> = Left<A> | Right<B>;
 
 /** An object corresponding to failure. */
@@ -1498,3 +1893,4 @@ abstract class Expr extends ASTNode {
     return true;
   }
 }
+
