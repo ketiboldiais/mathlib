@@ -511,7 +511,7 @@ const right = <T>(x: T) => new Right(x);
 type NumberTokenType =
   | token_type.integer
   | token_type.float
-  | token_type.big_number
+  | token_type.big_integer
   | token_type.scientific
   | token_type.fraction;
 
@@ -1645,6 +1645,9 @@ interface Visitor<T> {
   tupleExpr(node: TupleExpr): T;
   vectorExpr(node: VectorExpr): T;
   matrixExpr(node: MatrixExpr): T;
+  // Literals
+  bigInteger(node: BigInteger): T;
+  sym(node: Sym): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -2026,7 +2029,7 @@ class MatrixExpr extends Expr {
     return nodekind.matrix_expression;
   }
   toString(): string {
-    const vectors = this.$vectors.map((v = v.toString())).join(",");
+    const vectors = this.$vectors.map((v => v.toString())).join(",");
     return `[${vectors}]`;
   }
   $vectors: VectorExpr[];
@@ -2067,4 +2070,29 @@ class BigInteger extends Expr {
 /** Returns a new big integer node. */
 function bigInteger(value: bigint) {
   return new BigInteger(value);
+}
+
+// TODO - Implement Big Rationals
+
+/** A node corresponding to a symbol. */
+class Sym extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.sym(this);
+  }
+  kind(): nodekind {
+    return nodekind.symbol;
+  }
+  toString(): string {
+    return this.$symbol.$lexeme;
+  }
+  $symbol: Token<token_type.symbol>;
+  constructor(symbol: Token<token_type.symbol>) {
+    super();
+    this.$symbol = symbol;
+  }
+}
+
+/** Returns a new symbol node. */
+function sym(symbol: Token<token_type.symbol>) {
+  return new Sym(symbol);
 }
