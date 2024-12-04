@@ -1224,6 +1224,8 @@ interface Visitor<T> {
   fnStmt(node: FnStmt): T;
   ifStmt(node: IfStmt): T;
   printStmt(node: PrintStmt): T;
+  returnStmt(node: ReturnStmt): T;
+  variableStmt(node: VariableStmt): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1400,6 +1402,62 @@ class PrintStmt extends Statement {
 /** Returns a new print statement node. */
 function printStmt(keyword: Token, expression: Expr) {
   return new PrintStmt(keyword, expression);
+}
+
+/** A node corresponding to a return statement. */
+class ReturnStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.returnStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.return_statement;
+  }
+  toString(): string {
+    return 'return-statement';
+  }
+  $keyword: Token;
+  $value: Expr;
+  constructor(keyword: Token, value: Expr) {
+    super();
+    this.$keyword = keyword;
+    this.$value = value;
+  }
+}
+
+/** Returns a new return statement node. */
+function returnStmt(keyword: Token, expression: Expr) {
+  return new ReturnStmt(keyword, expression);
+}
+
+class VariableStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.variableStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.variable_declaration;
+  }
+  toString(): string {
+    return 'variable-declaration';
+  }
+  $variable: Sym;
+  $value: Expr;
+  $mutable: boolean;
+  constructor(variable: Sym, value: Expr, mutable: boolean) {
+    super();
+    this.$variable = variable;
+    this.$value = value;
+    this.$mutable = mutable;
+  }
+} 
+
+/** Returns a new 'var' statement node. */
+function varStmt(symbol: Sym, value: Expr) {
+  return new VariableStmt(symbol, value, true);
+}
+
+/** Returns a new 'let' statement node. */
+function letStmt(symbol: Sym, value: Expr) {
+  return new VariableStmt(symbol, value, false);
 }
 
 /** A node corresponding to an expression node. */
