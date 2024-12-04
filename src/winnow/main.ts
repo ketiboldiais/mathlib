@@ -83,11 +83,11 @@ class Some<T> {
 }
 
 function some<T>(value: T) {
-  return (new Some<T>(value));
+  return new Some<T>(value);
 }
 
 function none() {
-  return (new None());
+  return new None();
 }
 
 type Option<T> = None | Some<T>;
@@ -265,9 +265,7 @@ class LinkedList<T> {
     return list;
   }
 
-  forEach(
-    f: (data: T, index: number, list: LinkedList<T>) => void,
-  ) {
+  forEach(f: (data: T, index: number, list: LinkedList<T>) => void) {
     if (this.isEmpty) return this;
     let node = this.head;
     let i = 0;
@@ -289,9 +287,9 @@ class LinkedList<T> {
       accumulator: X,
       currentValue: T,
       index: number,
-      list: LinkedList<T>,
+      list: LinkedList<T>
     ) => X,
-    initialValue: X,
+    initialValue: X
   ) {
     let i = 0;
     const fn = (list: LinkedList<T>, init: X): X => {
@@ -310,9 +308,9 @@ class LinkedList<T> {
       accumulator: X,
       currentValue: T,
       index: number,
-      list: LinkedList<T>,
+      list: LinkedList<T>
     ) => X,
-    initialValue: X,
+    initialValue: X
   ): X {
     return this.#reduce(1, reducer, initialValue);
   }
@@ -321,9 +319,9 @@ class LinkedList<T> {
       accumulator: X,
       currentValue: T,
       index: number,
-      list: LinkedList<T>,
+      list: LinkedList<T>
     ) => X,
-    initialValue: X,
+    initialValue: X
   ): X {
     return this.#reduce(0, reducer, initialValue);
   }
@@ -341,9 +339,7 @@ class LinkedList<T> {
   }
 
   /** Returns a new list whose elements satisfy the given predicate. */
-  filter(
-    predicate: (value: T, index: number, list: LinkedList<T>) => boolean,
-  ) {
+  filter(predicate: (value: T, index: number, list: LinkedList<T>) => boolean) {
     const out = new LinkedList<T>();
     this.forEach((n, i, list) => predicate(n, i, list) && out.push(n));
     return out;
@@ -712,7 +708,7 @@ enum token_type {
   div,
   native,
   // algebra strings
-  algebra_string
+  algebra_string,
 }
 
 // § Token Object
@@ -1387,7 +1383,7 @@ export function lexical(code: string) {
   };
 
   const algebraStringToken = () => {
-    while ((peek() !== `'`) && !atEnd()) {
+    while (peek() !== `'` && !atEnd()) {
       if (peek() === `\n`) {
         $line++;
         $column = 0;
@@ -1402,8 +1398,8 @@ export function lexical(code: string) {
     tick(); // eat the ':'
     const s = slice().replaceAll(`'`, "");
     return tkn(token_type.algebra_string).withLiteral(s);
-  }
-  
+  };
+
   const scan = (): Token => {
     // Start by skipping whitespace.
     skipWhitespace();
@@ -1646,6 +1642,7 @@ interface Visitor<T> {
   // expressions
   indexExpr(node: IndexExpr): T;
   algebraString(node: AlgebraString): T;
+  tupleExpr(node: TupleExpr): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1808,7 +1805,7 @@ class PrintStmt extends Statement {
     return nodekind.print_statement;
   }
   toString(): string {
-    return 'print-statement';
+    return "print-statement";
   }
   $keyword: Token;
   $expression: Expr;
@@ -1833,7 +1830,7 @@ class ReturnStmt extends Statement {
     return nodekind.return_statement;
   }
   toString(): string {
-    return 'return-statement';
+    return "return-statement";
   }
   $keyword: Token;
   $value: Expr;
@@ -1857,7 +1854,7 @@ class VariableStmt extends Statement {
     return nodekind.variable_declaration;
   }
   toString(): string {
-    return 'variable-declaration';
+    return "variable-declaration";
   }
   $variable: Sym;
   $value: Expr;
@@ -1868,7 +1865,7 @@ class VariableStmt extends Statement {
     this.$value = value;
     this.$mutable = mutable;
   }
-} 
+}
 
 /** Returns a new 'var' statement node. */
 function varStmt(symbol: Sym, value: Expr) {
@@ -1880,7 +1877,6 @@ function letStmt(symbol: Sym, value: Expr) {
   return new VariableStmt(symbol, value, false);
 }
 
-
 /** An AST node corresponding to a while statement. */
 class WhileStmt extends Statement {
   accept<T>(visitor: Visitor<T>): T {
@@ -1890,7 +1886,7 @@ class WhileStmt extends Statement {
     return nodekind.while_statement;
   }
   toString(): string {
-    return 'while-statement';
+    return "while-statement";
   }
   $keyword: Token;
   $condition: Expr;
@@ -1927,7 +1923,7 @@ class IndexExpr extends Expr {
     return nodekind.index_expression;
   }
   toString(): string {
-    return `${this.$list.toString()}[${this.$index.toString()}]`
+    return `${this.$list.toString()}[${this.$index.toString()}]`;
   }
   $list: Expr;
   $index: Expr;
@@ -1942,9 +1938,8 @@ class IndexExpr extends Expr {
 
 /** Returns a new indexing expression node. */
 function indexExpr(list: Expr, index: Expr, op: Token) {
-  return new IndexExpr(list, index, op)
+  return new IndexExpr(list, index, op);
 }
-
 
 /** An AST node corresponding to an algebra string. */
 class AlgebraString extends Expr {
@@ -1971,4 +1966,26 @@ function algebraString(expression: Expr, op: Token) {
   return new AlgebraString(expression, op);
 }
 
+/** A node corresponding to a tuple expression. */
+class TupleExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.tupleExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.tuple_expression;
+  }
+  toString(): string {
+    const elems = this.$elements.map((e) => e.toString()).join(",");
+    return `(${elems})`;
+  }
+  $elements: LinkedList<Expr>;
+  constructor(elements: Expr[]) {
+    super();
+    this.$elements = linkedList(...elements);
+  }
+}
 
+/** Returns a new tuple expression. */
+function tupleExpr(elements: Expr[]) {
+  return new TupleExpr(elements);
+}
