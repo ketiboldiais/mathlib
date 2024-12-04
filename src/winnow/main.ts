@@ -1644,6 +1644,7 @@ interface Visitor<T> {
   algebraString(node: AlgebraString): T;
   tupleExpr(node: TupleExpr): T;
   vectorExpr(node: VectorExpr): T;
+  matrixExpr(node: MatrixExpr): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -2014,4 +2015,32 @@ class VectorExpr extends Expr {
 /** Returns a new vector expression node. */
 function vectorExpr(op: Token, elements: Expr[]) {
   return new VectorExpr(op, elements);
+}
+
+/** A node corresponding to a matrix expression. */
+class MatrixExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.matrixExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.matrix_expression;
+  }
+  toString(): string {
+    const vectors = this.$vectors.map((v = v.toString())).join(",");
+    return `[${vectors}]`;
+  }
+  $vectors: VectorExpr[];
+  $rowCount: number;
+  $colCount: number;
+  constructor(vectors: VectorExpr[], rows: number, columns: number) {
+    super();
+    this.$vectors = vectors;
+    this.$rowCount = rows;
+    this.$colCount = columns;
+  }
+}
+
+/** Returns a new matrix expression. */
+function matrixExpr(vectors: VectorExpr[], rowCount: number, colCount: number) {
+  return new MatrixExpr(vectors, rowCount, colCount);
 }
