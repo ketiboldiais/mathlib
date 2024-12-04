@@ -1182,7 +1182,7 @@ enum nodekind {
   grouped_expression,
   expression_statement,
   function_declaration,
-  branching_statement,
+  if_statement,
   print_statement,
   return_statement,
   variable_declaration,
@@ -1222,6 +1222,8 @@ interface Visitor<T> {
   blockStmt(node: BlockStatement): T;
   exprStmt(node: ExprStmt): T;
   fnStmt(node: FnStmt): T;
+  ifStmt(node: IfStmt): T;
+  printStmt(node: PrintStmt): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1287,7 +1289,7 @@ class ExprStmt extends Statement {
     return nodekind.expression_statement;
   }
   toString(): string {
-    return 'expression-statement';
+    return "expression-statement";
   }
   $expression: Expr;
   constructor(expression: Expr) {
@@ -1310,12 +1312,16 @@ class FnStmt extends Statement {
     return nodekind.function_declaration;
   }
   toString(): string {
-    return 'fn-declaration';
+    return "fn-declaration";
   }
   $name: Token<token_type.symbol>;
   $params: Sym[];
   $body: Statement[];
-  constructor(name: Token<token_type.symbol>, params: Sym[], body: Statement[]) {
+  constructor(
+    name: Token<token_type.symbol>,
+    params: Sym[],
+    body: Statement[]
+  ) {
     super();
     this.$name = name;
     this.$params = params;
@@ -1324,13 +1330,77 @@ class FnStmt extends Statement {
 }
 
 /** Returns a new function declaration statement. */
-function fnStmt(name: Token<token_type.symbol>, params: Sym[], body: Statement[]) {
+function fnStmt(
+  name: Token<token_type.symbol>,
+  params: Sym[],
+  body: Statement[]
+) {
   return new FnStmt(name, params, body);
 }
 
- // TODO If Statement
+/** An AST node corresponding to an if-then statement. */
+class IfStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.ifStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.if_statement;
+  }
+  toString(): string {
+    return "if-statement";
+  }
+  $keyword: Token;
+  $condition: Expr;
+  $then: Statement;
+  $alt: Statement;
+  constructor(
+    keyword: Token,
+    condition: Expr,
+    then: Statement,
+    alt: Statement
+  ) {
+    super();
+    this.$keyword = keyword;
+    this.$condition = condition;
+    this.$then = then;
+    this.$alt = alt;
+  }
+}
 
- 
+/** Returns a new if-then statement. */
+function ifStmt(
+  keyword: Token,
+  condition: Expr,
+  then: Statement,
+  alt: Statement
+) {
+  return new IfStmt(keyword, condition, then, alt);
+}
+
+/** An AST node corresponding to a print statement. */
+class PrintStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.printStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.print_statement;
+  }
+  toString(): string {
+    return 'print-statement';
+  }
+  $keyword: Token;
+  $expression: Expr;
+  constructor(keyword: Token, expression: Expr) {
+    super();
+    this.$keyword = keyword;
+    this.$expression = expression;
+  }
+}
+
+/** Returns a new print statement node. */
+function printStmt(keyword: Token, expression: Expr) {
+  return new PrintStmt(keyword, expression);
+}
 
 /** A node corresponding to an expression node. */
 abstract class Expr extends ASTNode {
