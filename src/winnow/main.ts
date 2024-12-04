@@ -2029,7 +2029,7 @@ class MatrixExpr extends Expr {
     return nodekind.matrix_expression;
   }
   toString(): string {
-    const vectors = this.$vectors.map((v => v.toString())).join(",");
+    const vectors = this.$vectors.map((v) => v.toString()).join(",");
     return `[${vectors}]`;
   }
   $vectors: VectorExpr[];
@@ -2048,7 +2048,6 @@ function matrixExpr(vectors: VectorExpr[], rowCount: number, colCount: number) {
   return new MatrixExpr(vectors, rowCount, colCount);
 }
 
-
 /** An AST node corresponding to a big integer. */
 class BigInteger extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2058,7 +2057,7 @@ class BigInteger extends Expr {
     return nodekind.big_integer;
   }
   toString(): string {
-    return this.$value.toString()
+    return this.$value.toString();
   }
   $value: bigint;
   constructor(value: bigint) {
@@ -2071,8 +2070,6 @@ class BigInteger extends Expr {
 function bigInteger(value: bigint) {
   return new BigInteger(value);
 }
-
-// TODO - Implement Big Rationals
 
 /** A node corresponding to a symbol. */
 class Sym extends Expr {
@@ -2096,3 +2093,27 @@ class Sym extends Expr {
 function sym(symbol: Token<token_type.symbol>) {
   return new Sym(symbol);
 }
+
+// TODO - Implement Big Rationals
+// TODO - Implement AssignExpr
+// TODO - Implement NativeCall
+// TODO - Implement Algebraic Unary Expression
+// TODO - Implement Logical Unary Expression
+// TODO - Implement String Binary Expression
+// TODO - Implement Vector Binary Expression
+// TODO - Implement Algebraic Binary Expression
+// TODO - Implement Call Expression
+// TODO - Implement Group Expression
+// TODO - Implement Nil Expression
+// TODO - Implement Fraction Expression
+// TODO - Implement Numeric Constant Expression
+// TODO - Implement Integer Expression
+// TODO - Implement Float Expression
+// TODO - Implement Bool Expression
+// TODO - Implement String Literal Expression
+// TODO - Implement Logical Binary Expression
+// TODO - Implement Get Expression
+// TODO - Implement Set Expression
+// TODO - Implement Super Expression
+// TODO - Implement This Expression
+// TODO - Implement Relational Expression
