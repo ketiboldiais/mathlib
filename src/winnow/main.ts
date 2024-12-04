@@ -1645,6 +1645,7 @@ interface Visitor<T> {
   tupleExpr(node: TupleExpr): T;
   vectorExpr(node: VectorExpr): T;
   matrixExpr(node: MatrixExpr): T;
+  assignmentExpr(node: AssignmentExpr): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2094,8 +2095,30 @@ function sym(symbol: Token<token_type.symbol>) {
   return new Sym(symbol);
 }
 
-// TODO - Implement Big Rationals
-// TODO - Implement AssignExpr
+/** An AST node corresponding to an assignment expression. */
+class AssignmentExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.assignmentExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.assignment_expression;
+  }
+  toString(): string {
+    return `${this.$symbol.toString()} = ${this.$value.toString()}`
+  }
+  $symbol: Sym;
+  $value: Expr;
+  constructor(symbol: Sym, value: Expr) {
+    super();
+    this.$symbol = symbol;
+    this.$value = value;
+  }
+}
+
+/** Returns a new assignment expression node. */
+function assignmentExpr(symbol: Sym, value: Expr) {
+  return new AssignmentExpr(symbol, value)
+}
 // TODO - Implement NativeCall
 // TODO - Implement Algebraic Unary Expression
 // TODO - Implement Logical Unary Expression
@@ -2117,3 +2140,4 @@ function sym(symbol: Token<token_type.symbol>) {
 // TODO - Implement Super Expression
 // TODO - Implement This Expression
 // TODO - Implement Relational Expression
+// TODO - Implement Big Rationals
