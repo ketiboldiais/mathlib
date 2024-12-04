@@ -711,6 +711,8 @@ enum token_type {
   mod,
   div,
   native,
+  // algebra strings
+  algebra_string
 }
 
 // § Token Object
@@ -1384,6 +1386,24 @@ export function lexical(code: string) {
     return tkn(token_type.string, lex);
   };
 
+  const algebraStringToken = () => {
+    while ((peek() !== `'`) && !atEnd()) {
+      if (peek() === `\n`) {
+        $line++;
+        $column = 0;
+      } else {
+        $column++;
+      }
+      tick();
+    }
+    if (atEnd()) {
+      return errorToken(`Unterminated algebraic string`);
+    }
+    tick(); // eat the ':'
+    const s = slice().replaceAll(`'`, "");
+    return tkn(token_type.algebra_string).withLiteral(s);
+  }
+  
   const scan = (): Token => {
     // Start by skipping whitespace.
     skipWhitespace();
@@ -1476,7 +1496,8 @@ export function lexical(code: string) {
         return stringToken();
       case "+":
         return tkn(match("+") ? token_type.plus_plus : token_type.plus);
-
+      case "'":
+        return algebraStringToken();
       // Special handling of dot for vector operators.
       case ".": {
         if (match("+")) {
@@ -1608,7 +1629,7 @@ enum nodekind {
   super_expression,
   this_expression,
   relation,
-  indexing_expression,
+  index_expression,
   big_number,
   big_rational,
 }
@@ -1622,6 +1643,9 @@ interface Visitor<T> {
   returnStmt(node: ReturnStmt): T;
   variableStmt(node: VariableStmt): T;
   whileStmt(node: WhileStmt): T;
+  // expressions
+  indexExpr(node: IndexExpr): T;
+  algebraString(node: AlgebraString): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1893,4 +1917,58 @@ abstract class Expr extends ASTNode {
     return true;
   }
 }
+
+/** An AST node corresponding to an indexing expression. */
+class IndexExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.indexExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.index_expression;
+  }
+  toString(): string {
+    return `${this.$list.toString()}[${this.$index.toString()}]`
+  }
+  $list: Expr;
+  $index: Expr;
+  $op: Token;
+  constructor(list: Expr, index: Expr, op: Token) {
+    super();
+    this.$list = list;
+    this.$index = index;
+    this.$op = op;
+  }
+}
+
+/** Returns a new indexing expression node. */
+function indexExpr(list: Expr, index: Expr, op: Token) {
+  return new IndexExpr(list, index, op)
+}
+
+
+/** An AST node corresponding to an algebra string. */
+class AlgebraString extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.algebraString(this);
+  }
+  kind(): nodekind {
+    return nodekind.algebra_string;
+  }
+  toString(): string {
+    return this.$expression.toString();
+  }
+  $expression: Expr;
+  $op: Token;
+  constructor(expression: Expr, op: Token) {
+    super();
+    this.$expression = expression;
+    this.$op = op;
+  }
+}
+
+/** Returns a new algebra string node. */
+function algebraString(expression: Expr, op: Token) {
+  return new AlgebraString(expression, op);
+}
+
 
