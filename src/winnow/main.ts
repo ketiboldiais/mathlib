@@ -1643,6 +1643,7 @@ interface Visitor<T> {
   indexExpr(node: IndexExpr): T;
   algebraString(node: AlgebraString): T;
   tupleExpr(node: TupleExpr): T;
+  vectorExpr(node: VectorExpr): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1988,4 +1989,29 @@ class TupleExpr extends Expr {
 /** Returns a new tuple expression. */
 function tupleExpr(elements: Expr[]) {
   return new TupleExpr(elements);
+}
+
+class VectorExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.vectorExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.vector_expression;
+  }
+  toString(): string {
+    const elems = this.$elements.map((e) => e.toString()).join(",");
+    return `[${elems}]`;
+  }
+  $op: Token;
+  $elements: Expr[];
+  constructor(op: Token, elements: Expr[]) {
+    super();
+    this.$op = op;
+    this.$elements = elements;
+  }
+}
+
+/** Returns a new vector expression node. */
+function vectorExpr(op: Token, elements: Expr[]) {
+  return new VectorExpr(op, elements);
 }
