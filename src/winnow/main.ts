@@ -1221,6 +1221,7 @@ enum nodekind {
 interface Visitor<T> {
   blockStmt(node: BlockStatement): T;
   exprStmt(node: ExprStmt): T;
+  fnStmt(node: FnStmt): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -1299,6 +1300,37 @@ class ExprStmt extends Statement {
 function exprStmt(expression: Expr) {
   return new ExprStmt(expression);
 }
+
+/** A node corresponding to a function declaration statement. */
+class FnStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.fnStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.function_declaration;
+  }
+  toString(): string {
+    return 'fn-declaration';
+  }
+  $name: Token<token_type.symbol>;
+  $params: Sym[];
+  $body: Statement[];
+  constructor(name: Token<token_type.symbol>, params: Sym[], body: Statement[]) {
+    super();
+    this.$name = name;
+    this.$params = params;
+    this.$body = body;
+  }
+}
+
+/** Returns a new function declaration statement. */
+function fnStmt(name: Token<token_type.symbol>, params: Sym[], body: Statement[]) {
+  return new FnStmt(name, params, body);
+}
+
+ // TODO If Statement
+
+ 
 
 /** A node corresponding to an expression node. */
 abstract class Expr extends ASTNode {
