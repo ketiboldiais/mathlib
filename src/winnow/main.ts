@@ -1592,6 +1592,7 @@ enum nodekind {
   block_statement,
   string_binex,
   grouped_expression,
+  negation_expression,
   expression_statement,
   function_declaration,
   if_statement,
@@ -1647,6 +1648,7 @@ interface Visitor<T> {
   matrixExpr(node: MatrixExpr): T;
   assignmentExpr(node: AssignmentExpr): T;
   nativeCallExpr(node: NativeCallExpr): T;
+  negExpr(node: NegExpr): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2147,7 +2149,31 @@ function nativeCall(name: Token<token_type.native>, args: Expr[]) {
   return new NativeCallExpr(name, args);
 }
 
-// TODO - Implement Algebraic Unary Expression
+// An AST node corresponding to algebraic negation
+class NegExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.negExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.negation_expression;
+  }
+  toString(): string {
+    return `-${this.$arg.toString()}`;
+  }
+  $op: Token<token_type.minus>;
+  $arg: Expr;
+  constructor(op: Token<token_type.minus>, arg: Expr) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+} 
+
+/** Returns a new negation expression node. */
+function negExpr(op: Token<token_type.minus>, arg: Expr) {
+  return new NegExpr(op, arg);
+}
+
 // TODO - Implement Logical Unary Expression
 // TODO - Implement String Binary Expression
 // TODO - Implement Vector Binary Expression
