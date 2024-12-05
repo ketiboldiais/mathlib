@@ -1646,6 +1646,7 @@ interface Visitor<T> {
   vectorExpr(node: VectorExpr): T;
   matrixExpr(node: MatrixExpr): T;
   assignmentExpr(node: AssignmentExpr): T;
+  nativeCallExpr(node: NativeCallExpr): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2119,7 +2120,33 @@ class AssignmentExpr extends Expr {
 function assignmentExpr(symbol: Sym, value: Expr) {
   return new AssignmentExpr(symbol, value)
 }
-// TODO - Implement NativeCall
+
+/** An AST node corresponding to a native call expression.  */
+class NativeCallExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.nativeCallExpr(this);
+  }
+  toString(): string {
+    const args = this.$args.map(x => x.toString()).join(',');
+    return `${this.$name.$lexeme}(${args})`;
+  }
+  kind(): nodekind {
+    return nodekind.native_call;
+  }
+  $name: Token<token_type.native>;
+  $args: Expr[];
+  constructor(name: Token<token_type.native>, args: Expr[]) {
+    super();
+    this.$name = name;
+    this.$args = args;
+  }
+}
+
+/** Returns a new native call expression node. */
+function nativeCall(name: Token<token_type.native>, args: Expr[]) {
+  return new NativeCallExpr(name, args);
+}
+
 // TODO - Implement Algebraic Unary Expression
 // TODO - Implement Logical Unary Expression
 // TODO - Implement String Binary Expression
