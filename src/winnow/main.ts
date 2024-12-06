@@ -532,24 +532,26 @@ class Err extends Error {
   $type: ErrorType;
   /** The line where this error occurred. */
   $line: number;
-  /** The column where this error occurred. */
-  $column: number;
-  constructor(message: string, type: ErrorType, line: number, column: number) {
+  constructor(message: string, type: ErrorType, line: number) {
     super(message);
     this.message = message;
     this.$type = type;
     this.$line = line;
-    this.$column = column;
   }
   toString() {
     return this.message;
   }
 }
 
-const errorFactory =
-  (type: ErrorType) => (message: string, line: number, column: number) =>
-    new Err(message, type, line, column);
+/** Generates error-making functions. */
+const errorFactory = (type: ErrorType) => (message: string, line: number) =>
+  new Err(message, type, line);
+
+/** Returns a new lexical error. */
 const lexicalError = errorFactory("lexical-error");
+
+/** Returns a new syntax error. */
+const syntaxError = errorFactory("syntax-error");
 
 // § Primitives
 
@@ -728,19 +730,15 @@ class Token<
   /** The line where this token was first encountered. */
   $line: number;
 
-  /** The column where this token was first encountered. */
-  $column: number;
-
-  constructor(type: T, lexeme: string, line: number, column: number) {
+  constructor(type: T, lexeme: string, line: number) {
     this.$type = type;
     this.$lexeme = lexeme;
     this.$line = line;
-    this.$column = column;
   }
 
   /** Returns a copy of this token. */
   copy() {
-    return new Token(this.$type, this.$lexeme, this.$line, this.$column);
+    return new Token(this.$type, this.$lexeme, this.$line);
   }
 
   /**
@@ -784,17 +782,6 @@ class Token<
   withLine(line: number) {
     const out = this.copy();
     out.$line = line;
-    return out;
-  }
-
-  /**
-   * Returns a copy of this token with a new column number.
-   * @param column The new column number.
-   * @returns A copy of this token with the given column as its column number.
-   */
-  withColumn(column: number) {
-    const out = this.copy();
-    out.$column = column;
     return out;
   }
 
@@ -849,21 +836,15 @@ class Token<
   }
 
   /** The empty token, used as a placeholder. */
-  static empty: Token<token_type, any> = new Token(
-    token_type.empty,
-    "",
-    -1,
-    -1
-  );
+  static empty: Token<token_type, any> = new Token(token_type.empty, "", -1);
 
   /** The end token, marking the end of input. */
-  static end: Token<token_type, any> = new Token(token_type.end, "END", -1, -1);
+  static end: Token<token_type, any> = new Token(token_type.end, "END", -1);
 
   /** Returns a string form of this token. */
   toString() {
     return `{token: ${token_type[this.$type]}, lexeme: ${this.$lexeme}, line: ${
-      this.$line
-    }, column: ${this.$column}, literal: ${this.$literal}}`;
+      this.$line}, literal: ${this.$literal}}`;
   }
 }
 
@@ -878,10 +859,9 @@ class Token<
 function token<X extends token_type>(
   type: X,
   lexeme: string,
-  line: number,
-  column: number
+  line: number
 ): Token<X> {
-  return new Token(type, lexeme, line, column);
+  return new Token(type, lexeme, line);
 }
 
 // § Native Function Types
@@ -927,12 +907,6 @@ export function lexical(code: string) {
   let $line: number = 1;
 
   /**
-   * A variable corresponding to the
-   * current column the scanner's on.
-   */
-  let $column: number = 1;
-
-  /**
    * A pointer to the first character
    * of the lexeme currently being
    * scanned.
@@ -976,7 +950,7 @@ export function lexical(code: string) {
    */
   const tkn = (type: token_type, lexeme: string = ""): Token => {
     lexeme = lexeme ? lexeme : slice();
-    return token(type, lexeme, $line, $column);
+    return token(type, lexeme, $line);
   };
 
   /**
@@ -988,8 +962,8 @@ export function lexical(code: string) {
    * @returns A new Token of type token_type.ERROR.
    */
   const errorToken = (message: string): Token<token_type.error, Err> => {
-    $error = lexicalError(message, $line, $column);
-    return token(token_type.error, "", $line, $column).withLiteral($error);
+    $error = lexicalError(message, $line);
+    return token(token_type.error, "", $line).withLiteral($error);
   };
 
   /**
@@ -1056,11 +1030,9 @@ export function lexical(code: string) {
         case "\r":
         case "\t":
           tick();
-          $column++;
           break;
         case "\n":
           $line++;
-          $column = 0;
           tick();
           break;
         default:
@@ -1388,9 +1360,6 @@ export function lexical(code: string) {
     while (peek() !== '"' && !atEnd()) {
       if (peek() === "\n") {
         $line++;
-        $column = 0;
-      } else {
-        $column++;
       }
       tick();
     }
@@ -1404,9 +1373,6 @@ export function lexical(code: string) {
     while (peek() !== `'` && !atEnd()) {
       if (peek() === `\n`) {
         $line++;
-        $column = 0;
-      } else {
-        $column++;
       }
       tick();
     }
@@ -2532,7 +2498,7 @@ class GetExpr extends Expr {
     this.$object = object;
     this.$name = name;
   }
-} 
+}
 
 /** Returns a new Get Expression node. */
 function getExpr(object: Expr, name: Token) {
@@ -2592,7 +2558,7 @@ class SuperExpr extends Expr {
 /** Returns a new super expression node. */
 function superExpr(method: Token) {
   return new SuperExpr(method);
-} 
+}
 
 /** An AST node corresponding to a this expression. */
 class ThisExpr extends Expr {
@@ -2615,4 +2581,64 @@ class ThisExpr extends Expr {
 /** Returns a new this-expression node. */
 function thisExpr(keyword: Token) {
   return new ThisExpr(keyword);
+}
+
+class ParserState<STMT extends TreeNode, EXPR extends TreeNode> {
+  $error: null | Err = null;
+  private lexer!: ReturnType<typeof lexical>;
+  init(source: string) {
+    this.lexer = lexical(source);
+    this.next();
+    return this;
+  }
+  $prev: Token = Token.empty;
+  $cursor: number = -1;
+  $peek: Token = Token.empty;
+  $current: Token = Token.empty;
+  $lastExpression: EXPR;
+  $currentExpression: EXPR;
+  $lastStmt: nodekind;
+  $currentStmt: nodekind;
+  constructor(nilExpression: EXPR, emptyStatement: STMT) {
+    this.$lastExpression = nilExpression;
+    this.$currentExpression = nilExpression;
+    this.$lastStmt = emptyStatement.kind();
+    this.$currentStmt = emptyStatement.kind();
+  }
+  /** Returns true if an implicit semicolon is permissible. */
+  implicitSemicolonOK() {
+    return this.$peek.isType(token_type.end) || this.atEnd();
+  }
+  /** Returns a new expression (in a RIGHT monad). */
+  newExpr<E extends EXPR>(expression: E) {
+    const prev = this.$currentExpression;
+    this.$currentExpression = expression;
+    this.$lastExpression = prev;
+    return right(expression);
+  }
+  /** Returns a new statement (in a LEFT monad). */
+  newStmt<S extends STMT>(statement: S) {
+    const prev = this.$currentStmt;
+    this.$currentStmt = statement.kind();
+    this.$lastStmt = prev;
+    return right(statement);
+  }
+  /** Moves the parser state forward. */
+  next() {
+    this.$cursor++;
+    this.$current = this.$peek;
+    const nxtToken = this.lexer.scan();
+    if (nxtToken.isErrorToken()) {
+      this.$error = nxtToken.$literal;
+      return Token.end;
+    }
+    this.$peek = nxtToken;
+    return this.$current;
+  }
+  /** Returns true if there is nothing left to parse in the parser state. */
+  atEnd() {
+    return this.lexer.atEnd() || this.$error !== null;
+  }
+
+  error(message: string, line: number) {}
 }
