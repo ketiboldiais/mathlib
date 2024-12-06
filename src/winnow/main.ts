@@ -1609,6 +1609,8 @@ enum nodekind {
   literal,
   string,
   bool,
+  integer,
+  nil,
 }
 
 interface Visitor<T> {
@@ -1645,6 +1647,8 @@ interface Visitor<T> {
   sym(node: Sym): T;
   string(node: StringLit): T;
   bool(node: Bool): T;
+  nil(node: Nil): T;
+  integer(node: Integer): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
 }
@@ -2360,10 +2364,10 @@ type LiteralTokenType =
   | NumberTokenType
   | token_type.string
   | token_type.boolean
+  | token_type.nil
   | token_type.nan
-  | token_type.inf
-  | token_type.nil;
-  
+  | token_type.inf;
+
 /** An AST node corresponding to a string literal. */
 class StringLit extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2380,7 +2384,7 @@ class StringLit extends Expr {
     super();
     this.$value = value;
   }
-} 
+}
 
 /** Returns a new string literal node. */
 function stringLit(value: string) {
@@ -2408,6 +2412,52 @@ class Bool extends Expr {
 /** Returns a new Boolean literal node. */
 function bool(value: boolean) {
   return new Bool(value);
+}
+
+/** An AST node corresponding to a nil value. */
+class Nil extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.nil(this);
+  }
+  kind(): nodekind {
+    return nodekind.nil;
+  }
+  toString(): string {
+    return `nil`;
+  }
+  $value: null;
+  constructor() {
+    super();
+    this.$value = null;
+  }
+}
+
+/** Returns a new nil node. */
+function nil() {
+  return new Nil();
+}
+
+/** An AST node corresponding to an integer. */
+class Integer extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.integer(this);
+  }
+  kind(): nodekind {
+    return nodekind.integer;
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  $value: number;
+  constructor(value:number) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new integer node. */
+function integer(value: number) {
+  return new Integer(value);
 }
 
 /** An AST node corresponding to a literal expression. */
