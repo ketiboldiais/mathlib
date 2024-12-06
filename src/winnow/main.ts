@@ -1599,6 +1599,7 @@ enum nodekind {
   print_statement,
   return_statement,
   variable_declaration,
+  algebraic_binex,
   vector_binex,
   while_statement,
   algebra_string,
@@ -1611,7 +1612,7 @@ enum nodekind {
   native_call,
   algebraic_infix,
   logical_unary,
-  call,
+  call_expression,
   nil,
   fraction_expression,
   numeric_constant,
@@ -1653,6 +1654,8 @@ interface Visitor<T> {
   factorialExpr(node: FactorialExpr): T;
   notExpr(node: NotExpr): T;
   vectorBinex(node: VectorBinex): T;
+  algebraicBinex(node: AlgebraicBinex): T;
+  callExpr(node: CallExpr): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2229,14 +2232,16 @@ function notExpr(op: Token<token_type.not>, arg: Expr) {
 }
 
 // TODO - Implement Concat Expression
-// TODO - Implement Vector Binary Expression
+
+/** A token corresponding to a vectory binary operator */
 type VectorBinop =
   | token_type.dot_add // scalar/pairwise addition
   | token_type.dot_minus // scalar/pairwise subtraction
   | token_type.dot_star // scalar/pairwise multiplication
   | token_type.dot_caret // scalar/pairwise exponentiation
   | token_type.at; // dot product
-  
+
+/** An AST node corresponding to a binary expression node. */
 class VectorBinex extends Expr {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.vectorBinex(this);
@@ -2266,9 +2271,77 @@ function vectorBinex(left: Expr, op: Token<VectorBinop>, right: Expr) {
   return new VectorBinex(left, op, right);
 }
 
+/** A union of all algebraic operator token types. */
+type AlgebraicOp = 
+  | token_type.plus // addition; 1 + 2 -> 3
+  | token_type.star // multiplication; 3 * 4 -> 12
+  | token_type.caret // exponentiation; 3^2 -> 9 
+  | token_type.slash // division; 3/6 -> 1/2 -> 0.5
+  | token_type.minus // subtraction; 5 - 2 -> 3
+  | token_type.rem // remainder; -10 rem 3 -> -1
+  | token_type.mod // modulo; -10 mod 3 -> 2
+  | token_type.percent // percent operator; 3 % 325 -> 9.75
+  | token_type.div // int division (divide number, round down to nearest int); 10 div 3 -> 3 
 
-// TODO - Implement Algebraic Binary Expression
+/** An AST node corresponding to an algebraic binary expression. */
+class AlgebraicBinex extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.algebraicBinex(this);
+  }
+  kind(): nodekind {
+    return nodekind.algebraic_binex;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const right = this.$right.toString();
+    const op = this.$op.$lexeme;
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expr;
+  $op: Token<AlgebraicOp>;
+  $right: Expr;
+  constructor(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+
+/** Returns a new algebraic binary expression. */
+function algebraicBinex(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
+  return new AlgebraicBinex(left, op, right);
+}
 // TODO - Implement Call Expression
+
+class CallExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.callExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.call_expression;
+  }
+  toString(): string {
+    const callee = this.$callee.toString();
+    const args = this.$args.map(arg => arg.toString()).join(',');
+    return `${callee}(${args})`;
+  }
+  $callee: Expr;
+  $paren: Token;
+  $args: Expr[];
+  constructor(callee: Expr, paren: Token, args: Expr[]) {
+    super();
+    this.$callee = callee;
+    this.$paren = paren;
+    this.$args = args;
+  }
+}
+
+/** Returns a new call expression. */
+function callExpr(callee: Expr, paren: Token, args: Expr[]) {
+  return new CallExpr(callee, paren, args);
+}
+
 // TODO - Implement Group Expression
 // TODO - Implement Nil Expression
 // TODO - Implement Fraction Expression
