@@ -826,6 +826,14 @@ class Token<
     return typeof this.$literal === "number";
   }
 
+  /** Returns true, and asserts, if this token is a number constant token. */
+  isNumConst(): this is Token<T, number> {
+    return (
+      typeof this.$literal === "number" &&
+      this.$type === token_type.numeric_constant
+    );
+  }
+
   /**
    * Returns true if and only if this token is a
    * right-delimiter token. That is, either a `)`,
@@ -1126,6 +1134,16 @@ export function lexical(code: string) {
     nand: () => tkn(token_type.nand),
   };
 
+  const numConsts: Record<string, () => Token> = {
+    e: () => tkn(token_type.numeric_constant).withLiteral(Math.E),
+    pi: () => tkn(token_type.numeric_constant).withLiteral(Math.PI),
+    ln10: () => tkn(token_type.numeric_constant).withLiteral(Math.LN10),
+    ln2: () => tkn(token_type.numeric_constant).withLiteral(Math.LN2),
+    log10e: () => tkn(token_type.numeric_constant).withLiteral(Math.LOG10E),
+    log2e: () => tkn(token_type.numeric_constant).withLiteral(Math.LOG2E),
+    sqrt2: () => tkn(token_type.numeric_constant).withLiteral(Math.SQRT2),
+  };
+
   /**
    * Record of native functions. Each key corresponds
    * to the native function name. The number mapped to
@@ -1172,6 +1190,8 @@ export function lexical(code: string) {
       return tkn(token_type.native);
     } else if (dictionary[word]) {
       return dictionary[word]();
+    } else if (numConsts[word]) {
+      return numConsts[word]();
     } else {
       return tkn(token_type.symbol);
     }
@@ -1617,7 +1637,7 @@ enum nodekind {
   numeric_constant,
   string,
   symbol,
-  logical_infix,
+  logical_binex,
   let_expression,
   get_expression,
   set_expression,
@@ -1652,6 +1672,7 @@ interface Visitor<T> {
   notExpr(node: NotExpr): T;
   vectorBinex(node: VectorBinex): T;
   algebraicBinex(node: AlgebraicBinex): T;
+  logicalBinex(node: LogicalBinex): T;
   callExpr(node: CallExpr): T;
   parendExpr(node: ParendExpr): T;
   sym(node: Sym): T;
@@ -2369,8 +2390,7 @@ function literal(value: Token<LiteralTokenType>) {
   return new Literal(value);
 }
 
-
-// TODO - Implement Numeric Constant Expression
+/** An AST node corresponding to a numeric constant expression. */
 class NumConst extends Expr {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.numConst(this);
@@ -2383,13 +2403,56 @@ class NumConst extends Expr {
   }
   $sym: Token<token_type.numeric_constant>;
   $value: number;
-  constructor(sym: Token<token_type.numeric_constant>, value: number) {
+  constructor(sym: Token<token_type.numeric_constant, number>) {
     super();
     this.$sym = sym;
-    this.$value = value;
+    this.$value = sym.$literal;
   }
 }
+
+/** Returns a new numeric constant node. */
+function numConst(symbol: Token<token_type.numeric_constant, number>) {
+  return new NumConst(symbol);
+}
 // TODO - Implement Logical Binary Expression
+type BinaryLogicOp =
+  | token_type.and
+  | token_type.nand
+  | token_type.nor
+  | token_type.xnor
+  | token_type.xor
+  | token_type.or;
+  
+/** An AST node corresponding to a logical binary expression. */
+class LogicalBinex extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.logicalBinex(this);
+  }
+  kind(): nodekind {
+    return nodekind.logical_binex;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expr;
+  $op: Token<BinaryLogicOp>;
+  $right: Expr;
+  constructor(left: Expr, op: Token<BinaryLogicOp>, right: Expr) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+
+/** Returns a new logical binary expression node. */
+function logicalBinex(left: Expr, op: Token<BinaryLogicOp>, right: Expr) {
+  return new LogicalBinex(left, op, right);
+}
+
 // TODO - Implement Get Expression
 // TODO - Implement Set Expression
 // TODO - Implement Super Expression
