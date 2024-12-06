@@ -1678,6 +1678,7 @@ interface Visitor<T> {
   parendExpr(node: ParendExpr): T;
   getExpr(node: GetExpr): T;
   setExpr(node: SetExpr): T;
+  superExpr(node: SuperExpr): T;
   sym(node: Sym): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
@@ -2554,6 +2555,29 @@ function setExpr(object: Expr, name: Token, value: Expr) {
   return new SetExpr(object, name, value);
 }
 
-// TODO - Implement Super Expression
+/** An AST node corresponding to a super expression. */
+class SuperExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.superExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.super_expression;
+  }
+  toString(): string {
+    return `super-expression`;
+  }
+  $method: Token;
+  constructor(method: Token) {
+    super();
+    this.$method = method;
+  }
+}
+
+/** Returns a new super expression node. */
+function superExpr(method: Token) {
+  return new SuperExpr(method);
+} 
+
 // TODO - Implement This Expression
+
 // TODO - Implement Big Rationals
