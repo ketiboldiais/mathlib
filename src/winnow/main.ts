@@ -668,16 +668,14 @@ enum token_type {
   pound_minus, // '#-
   pound_star, // '#*'
   // Literals
-  symbol,
-  string,
-  // BOOLEAN,
   integer,
   float,
   fraction,
   scientific,
   big_integer,
-  false,
-  true,
+  symbol,
+  string,
+  boolean,
   nan,
   inf,
   nil,
@@ -1102,8 +1100,8 @@ export function lexical(code: string) {
     this: () => tkn(token_type.this),
     super: () => tkn(token_type.super),
     class: () => tkn(token_type.class),
-    false: () => tkn(token_type.false).withLiteral(false),
-    true: () => tkn(token_type.true).withLiteral(true),
+    false: () => tkn(token_type.boolean).withLiteral(false),
+    true: () => tkn(token_type.boolean).withLiteral(true),
     NaN: () => tkn(token_type.nan).withLiteral(NaN),
     Inf: () => tkn(token_type.inf).withLiteral(Infinity),
     return: () => tkn(token_type.return),
@@ -1617,9 +1615,6 @@ enum nodekind {
   nil,
   fraction_expression,
   numeric_constant,
-  integer,
-  float,
-  bool,
   string,
   symbol,
   logical_infix,
@@ -1632,6 +1627,7 @@ enum nodekind {
   index_expression,
   big_integer,
   big_rational,
+  literal,
 }
 
 interface Visitor<T> {
@@ -1658,9 +1654,9 @@ interface Visitor<T> {
   algebraicBinex(node: AlgebraicBinex): T;
   callExpr(node: CallExpr): T;
   parendExpr(node: ParendExpr): T;
-  // Literals
-  bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
+  literal(node: Literal): T;
+  numConst(node: NumConst): T;
 }
 
 /** A node corresponding to some syntax tree node. */
@@ -2061,29 +2057,6 @@ function matrixExpr(vectors: VectorExpr[], rowCount: number, colCount: number) {
   return new MatrixExpr(vectors, rowCount, colCount);
 }
 
-/** An AST node corresponding to a big integer. */
-class BigInteger extends Expr {
-  accept<T>(visitor: Visitor<T>): T {
-    return visitor.bigInteger(this);
-  }
-  kind(): nodekind {
-    return nodekind.big_integer;
-  }
-  toString(): string {
-    return this.$value.toString();
-  }
-  $value: bigint;
-  constructor(value: bigint) {
-    super();
-    this.$value = value;
-  }
-}
-
-/** Returns a new big integer node. */
-function bigInteger(value: bigint) {
-  return new BigInteger(value);
-}
-
 /** A node corresponding to a symbol. */
 class Sym extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2233,8 +2206,6 @@ function notExpr(op: Token<token_type.not>, arg: Expr) {
   return new NotExpr(op, arg);
 }
 
-// TODO - Implement Concat Expression
-
 /** A token corresponding to a vectory binary operator */
 type VectorBinop =
   | token_type.dot_add // scalar/pairwise addition
@@ -2274,16 +2245,16 @@ function vectorBinex(left: Expr, op: Token<VectorBinop>, right: Expr) {
 }
 
 /** A union of all algebraic operator token types. */
-type AlgebraicOp = 
+type AlgebraicOp =
   | token_type.plus // addition; 1 + 2 -> 3
   | token_type.star // multiplication; 3 * 4 -> 12
-  | token_type.caret // exponentiation; 3^2 -> 9 
+  | token_type.caret // exponentiation; 3^2 -> 9
   | token_type.slash // division; 3/6 -> 1/2 -> 0.5
   | token_type.minus // subtraction; 5 - 2 -> 3
   | token_type.rem // remainder; -10 rem 3 -> -1
   | token_type.mod // modulo; -10 mod 3 -> 2
   | token_type.percent // percent operator; 3 % 325 -> 9.75
-  | token_type.div // int division (divide number, round down to nearest int); 10 div 3 -> 3 
+  | token_type.div; // int division (divide number, round down to nearest int); 10 div 3 -> 3
 
 /** An AST node corresponding to an algebraic binary expression. */
 class AlgebraicBinex extends Expr {
@@ -2314,7 +2285,6 @@ class AlgebraicBinex extends Expr {
 function algebraicBinex(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
   return new AlgebraicBinex(left, op, right);
 }
-// TODO - Implement Call Expression
 
 /** An AST node corresponding to a function call expression. */
 class CallExpr extends Expr {
@@ -2326,7 +2296,7 @@ class CallExpr extends Expr {
   }
   toString(): string {
     const callee = this.$callee.toString();
-    const args = this.$args.map(arg => arg.toString()).join(',');
+    const args = this.$args.map((arg) => arg.toString()).join(",");
     return `${callee}(${args})`;
   }
   $callee: Expr;
@@ -2345,7 +2315,6 @@ function callExpr(callee: Expr, paren: Token, args: Expr[]) {
   return new CallExpr(callee, paren, args);
 }
 
-// TODO - Implement Parenthesized Expression
 /** An AST node corresponding to a parenthesized expression. */
 class ParendExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2355,12 +2324,12 @@ class ParendExpr extends Expr {
     return nodekind.parend_expression;
   }
   toString(): string {
-    return `(${this.$inner.toString()})`
+    return `(${this.$inner.toString()})`;
   }
   $inner: Expr;
   constructor(innerExpression: Expr) {
     super();
-    this.$inner =  innerExpression;
+    this.$inner = innerExpression;
   }
 }
 
@@ -2368,13 +2337,58 @@ class ParendExpr extends Expr {
 function parendExpr(innerExpression: Expr) {
   return new ParendExpr(innerExpression);
 }
-// TODO - Implement Nil Expression
-// TODO - Implement Fraction Expression
+
+type LiteralTokenType =
+  | NumberTokenType
+  | token_type.string
+  | token_type.boolean
+  | token_type.nan
+  | token_type.inf
+  | token_type.nil;
+
+/** An AST node corresponding to a literal expression. */
+class Literal extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.literal(this);
+  }
+  kind(): nodekind {
+    return nodekind.literal;
+  }
+  toString(): string {
+    return this.$value.$lexeme;
+  }
+  $value: Token<LiteralTokenType>;
+  constructor(value: Token<LiteralTokenType>) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new literal node. */
+function literal(value: Token<LiteralTokenType>) {
+  return new Literal(value);
+}
+
+
 // TODO - Implement Numeric Constant Expression
-// TODO - Implement Integer Expression
-// TODO - Implement Float Expression
-// TODO - Implement Bool Expression
-// TODO - Implement String Literal Expression
+class NumConst extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.numConst(this);
+  }
+  kind(): nodekind {
+    return nodekind.numeric_constant;
+  }
+  toString(): string {
+    return this.$sym.$lexeme;
+  }
+  $sym: Token<token_type.numeric_constant>;
+  $value: number;
+  constructor(sym: Token<token_type.numeric_constant>, value: number) {
+    super();
+    this.$sym = sym;
+    this.$value = value;
+  }
+}
 // TODO - Implement Logical Binary Expression
 // TODO - Implement Get Expression
 // TODO - Implement Set Expression
