@@ -1605,9 +1605,10 @@ enum nodekind {
   tuple_expression,
   vector_expression,
   matrix_expression,
+  factorial_expression,
   assignment_expression,
+  not_expression,
   native_call,
-  algebraic_unary,
   algebraic_infix,
   logical_unary,
   call,
@@ -1649,6 +1650,9 @@ interface Visitor<T> {
   assignmentExpr(node: AssignmentExpr): T;
   nativeCallExpr(node: NativeCallExpr): T;
   negExpr(node: NegExpr): T;
+  factorialExpr(node: FactorialExpr): T;
+  notExpr(node: NotExpr): T;
+  vectorBinex(node: VectorBinex): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2107,7 +2111,7 @@ class AssignmentExpr extends Expr {
     return nodekind.assignment_expression;
   }
   toString(): string {
-    return `${this.$symbol.toString()} = ${this.$value.toString()}`
+    return `${this.$symbol.toString()} = ${this.$value.toString()}`;
   }
   $symbol: Sym;
   $value: Expr;
@@ -2120,7 +2124,7 @@ class AssignmentExpr extends Expr {
 
 /** Returns a new assignment expression node. */
 function assignmentExpr(symbol: Sym, value: Expr) {
-  return new AssignmentExpr(symbol, value)
+  return new AssignmentExpr(symbol, value);
 }
 
 /** An AST node corresponding to a native call expression.  */
@@ -2129,7 +2133,7 @@ class NativeCallExpr extends Expr {
     return visitor.nativeCallExpr(this);
   }
   toString(): string {
-    const args = this.$args.map(x => x.toString()).join(',');
+    const args = this.$args.map((x) => x.toString()).join(",");
     return `${this.$name.$lexeme}(${args})`;
   }
   kind(): nodekind {
@@ -2149,7 +2153,7 @@ function nativeCall(name: Token<token_type.native>, args: Expr[]) {
   return new NativeCallExpr(name, args);
 }
 
-// An AST node corresponding to algebraic negation
+/** An AST node corresponding to algebraic negation */
 class NegExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.negExpr(this);
@@ -2167,16 +2171,102 @@ class NegExpr extends Expr {
     this.$op = op;
     this.$arg = arg;
   }
-} 
+}
 
 /** Returns a new negation expression node. */
 function negExpr(op: Token<token_type.minus>, arg: Expr) {
   return new NegExpr(op, arg);
 }
 
-// TODO - Implement Logical Unary Expression
-// TODO - Implement String Binary Expression
+/** A node corresponding to a factorial expression. */
+class FactorialExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.factorialExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.factorial_expression;
+  }
+  toString(): string {
+    return `${this.$arg.toString()}!`;
+  }
+  $op: Token<token_type.bang>;
+  $arg: Expr;
+  constructor(op: Token<token_type.bang>, arg: Expr) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+}
+
+/** Returns a new factorial expression node. */
+function factorialExpr(op: Token<token_type.bang>, arg: Expr) {
+  return new FactorialExpr(op, arg);
+}
+
+/** A node corresponding to a not expression. */
+class NotExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.notExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.not_expression;
+  }
+  toString(): string {
+    return `not ${this.$arg.toString()}`;
+  }
+  $op: Token<token_type.not>;
+  $arg: Expr;
+  constructor(op: Token<token_type.not>, arg: Expr) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+}
+
+/** Returns a new Not Expression node. */
+function notExpr(op: Token<token_type.not>, arg: Expr) {
+  return new NotExpr(op, arg);
+}
+
+// TODO - Implement Concat Expression
 // TODO - Implement Vector Binary Expression
+type VectorBinop =
+  | token_type.dot_add // scalar/pairwise addition
+  | token_type.dot_minus // scalar/pairwise subtraction
+  | token_type.dot_star // scalar/pairwise multiplication
+  | token_type.dot_caret // scalar/pairwise exponentiation
+  | token_type.at; // dot product
+  
+class VectorBinex extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.vectorBinex(this);
+  }
+  kind(): nodekind {
+    return nodekind.vector_binex;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expr;
+  $op: Token<VectorBinop>;
+  $right: Expr;
+  constructor(left: Expr, op: Token<VectorBinop>, right: Expr) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+
+/** Returns a new vector binary expression. */
+function vectorBinex(left: Expr, op: Token<VectorBinop>, right: Expr) {
+  return new VectorBinex(left, op, right);
+}
+
+
 // TODO - Implement Algebraic Binary Expression
 // TODO - Implement Call Expression
 // TODO - Implement Group Expression
