@@ -1607,6 +1607,8 @@ enum nodekind {
   relation_expression,
   index_expression,
   literal,
+  string,
+  bool,
 }
 
 interface Visitor<T> {
@@ -1641,6 +1643,8 @@ interface Visitor<T> {
   superExpr(node: SuperExpr): T;
   thisExpr(node: ThisExpr): T;
   sym(node: Sym): T;
+  string(node: StringLit): T;
+  bool(node: Bool): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
 }
@@ -2347,6 +2351,11 @@ function parendExpr(innerExpression: Expr) {
   return new ParendExpr(innerExpression);
 }
 
+/** Returns true, and asserts, if the given node is a parenthesized-expression node. */
+function isParendExpr(node: ASTNode): node is ParendExpr {
+  return node.kind() === nodekind.parend_expression;
+}
+
 type LiteralTokenType =
   | NumberTokenType
   | token_type.string
@@ -2354,6 +2363,52 @@ type LiteralTokenType =
   | token_type.nan
   | token_type.inf
   | token_type.nil;
+  
+/** An AST node corresponding to a string literal. */
+class StringLit extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.string(this);
+  }
+  kind(): nodekind {
+    return nodekind.string;
+  }
+  toString(): string {
+    return this.$value;
+  }
+  $value: string;
+  constructor(value: string) {
+    super();
+    this.$value = value;
+  }
+} 
+
+/** Returns a new string literal node. */
+function stringLit(value: string) {
+  return new StringLit(value);
+}
+
+/** An AST node corresponding to a Boolean literal. */
+class Bool extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.bool(this);
+  }
+  kind(): nodekind {
+    return nodekind.bool;
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  $value: boolean;
+  constructor(value: boolean) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new Boolean literal node. */
+function bool(value: boolean) {
+  return new Bool(value);
+}
 
 /** An AST node corresponding to a literal expression. */
 class Literal extends Expr {
@@ -2749,7 +2804,7 @@ function syntax(source: string) {
   };
 
   /** Parses a parenthesized expression */
-  const parenthesized_expression = (op: Token) => {
+  const parenthesized_expression = () => {
     const innerExpression = expr();
     if (innerExpression.isLeft()) return innerExpression;
     if (state.nextIs(token_type.comma)) {
@@ -2770,6 +2825,11 @@ function syntax(source: string) {
       return state.error(`Expected a closing ")".`, state.$current.$line);
     }
     return innerExpression.map((e) => parendExpr(e));
+  };
+
+  /** Parses a function call expression */
+  const function_call = (op: Token, node: Expr) => {
+    const callee = node;
   };
 
   const rules: BPTable<Expr> = {
