@@ -1677,6 +1677,7 @@ interface Visitor<T> {
   callExpr(node: CallExpr): T;
   parendExpr(node: ParendExpr): T;
   getExpr(node: GetExpr): T;
+  setExpr(node: SetExpr): T;
   sym(node: Sym): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
@@ -2505,7 +2506,7 @@ class GetExpr extends Expr {
     return nodekind.get_expression;
   }
   toString(): string {
-    return `${this.$object.toString()}.${this.$name}`;
+    return "";
   }
   $object: Expr;
   $name: Token;
@@ -2520,7 +2521,38 @@ class GetExpr extends Expr {
 function getExpr(object: Expr, name: Token) {
   return new GetExpr(object, name);
 }
+
+/** Returns true, and asserts, if the given node is a get-expression node. */
+function isGetExpr(node: ASTNode): node is GetExpr {
+  return node.kind() === nodekind.get_expression;
+}
 // TODO - Implement Set Expression
+/** An AST node corresponding to a set expression. */
+class SetExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.setExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.set_expression;
+  }
+  toString(): string {
+    return "";
+  }
+  $object: Expr;
+  $name: Token;
+  $value: Expr;
+  constructor(object: Expr, name: Token, value: Expr) {
+    super();
+    this.$object = object;
+    this.$name = name;
+    this.$value = value;
+  }
+}
+
+/** Returns a new set expression node. */
+function setExpr(object: Expr, name: Token, value: Expr) {
+  return new SetExpr(object, name, value);
+}
 
 // TODO - Implement Super Expression
 // TODO - Implement This Expression
