@@ -1676,6 +1676,7 @@ interface Visitor<T> {
   logicalBinex(node: LogicalBinex): T;
   callExpr(node: CallExpr): T;
   parendExpr(node: ParendExpr): T;
+  getExpr(node: GetExpr): T;
   sym(node: Sym): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
@@ -2495,7 +2496,32 @@ function relationExpr(left: Expr, op: Token<RelationOp>, right: Expr) {
 }
 
 // TODO - Implement Get Expression
+/** An AST node corresponding to a get expression. */
+class GetExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.getExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.get_expression;
+  }
+  toString(): string {
+    return `${this.$object.toString()}.${this.$name}`;
+  }
+  $object: Expr;
+  $name: Token;
+  constructor(object: Expr, name: Token) {
+    super();
+    this.$object = object;
+    this.$name = name;
+  }
+} 
+
+/** Returns a new Get Expression node. */
+function getExpr(object: Expr, name: Token) {
+  return new GetExpr(object, name);
+}
 // TODO - Implement Set Expression
+
 // TODO - Implement Super Expression
 // TODO - Implement This Expression
 // TODO - Implement Big Rationals
