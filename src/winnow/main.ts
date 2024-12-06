@@ -1643,7 +1643,7 @@ enum nodekind {
   set_expression,
   super_expression,
   this_expression,
-  relation,
+  relation_expression,
   index_expression,
   big_integer,
   big_rational,
@@ -1665,6 +1665,7 @@ interface Visitor<T> {
   tupleExpr(node: TupleExpr): T;
   vectorExpr(node: VectorExpr): T;
   matrixExpr(node: MatrixExpr): T;
+  relationExpr(node: RelationExpr): T;
   assignmentExpr(node: AssignmentExpr): T;
   nativeCallExpr(node: NativeCallExpr): T;
   negExpr(node: NegExpr): T;
@@ -2414,7 +2415,8 @@ class NumConst extends Expr {
 function numConst(symbol: Token<token_type.numeric_constant, number>) {
   return new NumConst(symbol);
 }
-// TODO - Implement Logical Binary Expression
+
+/** A token type corresponding to a binary logic operator. */
 type BinaryLogicOp =
   | token_type.and
   | token_type.nand
@@ -2422,7 +2424,7 @@ type BinaryLogicOp =
   | token_type.xnor
   | token_type.xor
   | token_type.or;
-  
+
 /** An AST node corresponding to a logical binary expression. */
 class LogicalBinex extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2453,9 +2455,47 @@ function logicalBinex(left: Expr, op: Token<BinaryLogicOp>, right: Expr) {
   return new LogicalBinex(left, op, right);
 }
 
+/** A token type corresponding to a relational operator. */
+type RelationOp =
+  | token_type.less
+  | token_type.greater
+  | token_type.equal_equal
+  | token_type.bang_equal
+  | token_type.greater_equal
+  | token_type.less_equal;
+
+/** An AST node corresponding to a relation expression node. */
+class RelationExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.relationExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.relation_expression;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const op = this.$op.$lexeme;
+    const right = this.$right.toString();
+    return `${left} ${op} ${right}`;
+  }
+  $left: Expr;
+  $op: Token<RelationOp>;
+  $right: Expr;
+  constructor(left: Expr, op: Token<RelationOp>, right: Expr) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+
+/** Returns a new relation expression node. */
+function relationExpr(left: Expr, op: Token<RelationOp>, right: Expr) {
+  return new RelationExpr(left, op, right);
+}
+
 // TODO - Implement Get Expression
 // TODO - Implement Set Expression
 // TODO - Implement Super Expression
 // TODO - Implement This Expression
-// TODO - Implement Relational Expression
 // TODO - Implement Big Rationals
