@@ -2725,5 +2725,163 @@ type ParsletEntry<T> = [Parslet<T>, Parslet<T>, bp];
 type BPTable<T> = Record<token_type, ParsletEntry<T>>;
 
 function syntax(source: string) {
+  /** Begin by initializing the state. */
   const state = enstate<Expr, Statement>(emptyExpr(), emptyStmt()).init(source);
+
+  /**
+   * The “blank” binding power. This particular binding power
+   * is bound either (1) the {@link ___|blank parslet}
+   * or (2) parlsets that should not trigger recursive calls.
+   */
+  const ___o = bp.nil;
+
+  /**
+   * The “blank” parslet. This parslet is used as a placeholder.
+   * If the {@link expr|expression parser} calls this parslet,
+   * then the {@link error} variable is set and parsing shall cease.
+   */
+  const ___: Parslet<Expr> = (token) => {
+    if (state.$error !== null) {
+      return left(state.$error);
+    } else {
+      return state.error(`Unexpected lexeme: ${token.$lexeme}`, token.$line);
+    }
+  };
+
+  /** Parses a parenthesized expression */
+  const parenthesized_expression = (op: Token) => {
+    const innerExpression = expr();
+    if (innerExpression.isLeft()) return innerExpression;
+    if (state.nextIs(token_type.comma)) {
+      const elements: Expr[] = [innerExpression.unwrap()];
+      do {
+        const e = expr();
+        if (e.isLeft()) return e;
+        elements.push(e.unwrap());
+      } while (state.nextIs(token_type.comma));
+      if (!state.nextIs(token_type.right_paren))
+        return state.error(
+          `Expected a ")" to close the tuple.`,
+          state.$current.$line
+        );
+      return state.newExpr(tupleExpr(elements));
+    }
+    if (!state.nextIs(token_type.right_paren)) {
+      return state.error(`Expected a closing ")".`, state.$current.$line);
+    }
+    return innerExpression.map((e) => parendExpr(e));
+  };
+
+  const rules: BPTable<Expr> = {
+    [token_type.end]: [___, ___, ___o],
+    [token_type.error]: [___, ___, ___o],
+    [token_type.empty]: [___, ___, ___o],
+    [token_type.left_paren]: [parenthesized_expression, ___, ___o],
+    [token_type.right_paren]: [___, ___, ___o],
+    [token_type.left_brace]: [___, ___, ___o],
+    [token_type.right_brace]: [___, ___, ___o],
+    [token_type.left_bracket]: [___, ___, ___o],
+    [token_type.right_bracket]: [___, ___, ___o],
+    [token_type.semicolon]: [___, ___, ___o],
+    [token_type.colon]: [___, ___, ___o],
+    [token_type.dot]: [___, ___, ___o],
+    [token_type.comma]: [___, ___, ___o],
+    [token_type.plus]: [___, ___, ___o],
+    [token_type.minus]: [___, ___, ___o],
+    [token_type.star]: [___, ___, ___o],
+    [token_type.slash]: [___, ___, ___o],
+    [token_type.caret]: [___, ___, ___o],
+    [token_type.percent]: [___, ___, ___o],
+    [token_type.bang]: [___, ___, ___o],
+    [token_type.ampersand]: [___, ___, ___o],
+    [token_type.tilde]: [___, ___, ___o],
+    [token_type.vbar]: [___, ___, ___o],
+    [token_type.equal]: [___, ___, ___o],
+    [token_type.less]: [___, ___, ___o],
+    [token_type.greater]: [___, ___, ___o],
+    [token_type.less_equal]: [___, ___, ___o],
+    [token_type.greater_equal]: [___, ___, ___o],
+    [token_type.bang_equal]: [___, ___, ___o],
+    [token_type.equal_equal]: [___, ___, ___o],
+    [token_type.plus_plus]: [___, ___, ___o],
+    [token_type.minus_minus]: [___, ___, ___o],
+    [token_type.star_star]: [___, ___, ___o],
+    [token_type.dot_add]: [___, ___, ___o],
+    [token_type.dot_star]: [___, ___, ___o],
+    [token_type.dot_minus]: [___, ___, ___o],
+    [token_type.dot_caret]: [___, ___, ___o],
+    [token_type.at]: [___, ___, ___o],
+    [token_type.pound_plus]: [___, ___, ___o],
+    [token_type.pound_minus]: [___, ___, ___o],
+    [token_type.pound_star]: [___, ___, ___o],
+    [token_type.integer]: [___, ___, ___o],
+    [token_type.float]: [___, ___, ___o],
+    [token_type.fraction]: [___, ___, ___o],
+    [token_type.scientific]: [___, ___, ___o],
+    [token_type.big_integer]: [___, ___, ___o],
+    [token_type.symbol]: [___, ___, ___o],
+    [token_type.string]: [___, ___, ___o],
+    [token_type.boolean]: [___, ___, ___o],
+    [token_type.nan]: [___, ___, ___o],
+    [token_type.inf]: [___, ___, ___o],
+    [token_type.nil]: [___, ___, ___o],
+    [token_type.numeric_constant]: [___, ___, ___o],
+    [token_type.algebraic]: [___, ___, ___o],
+    [token_type.and]: [___, ___, ___o],
+    [token_type.or]: [___, ___, ___o],
+    [token_type.not]: [___, ___, ___o],
+    [token_type.nand]: [___, ___, ___o],
+    [token_type.xor]: [___, ___, ___o],
+    [token_type.xnor]: [___, ___, ___o],
+    [token_type.nor]: [___, ___, ___o],
+    [token_type.if]: [___, ___, ___o],
+    [token_type.else]: [___, ___, ___o],
+    [token_type.fn]: [___, ___, ___o],
+    [token_type.let]: [___, ___, ___o],
+    [token_type.var]: [___, ___, ___o],
+    [token_type.return]: [___, ___, ___o],
+    [token_type.while]: [___, ___, ___o],
+    [token_type.for]: [___, ___, ___o],
+    [token_type.class]: [___, ___, ___o],
+    [token_type.print]: [___, ___, ___o],
+    [token_type.super]: [___, ___, ___o],
+    [token_type.this]: [___, ___, ___o],
+    [token_type.rem]: [___, ___, ___o],
+    [token_type.mod]: [___, ___, ___o],
+    [token_type.div]: [___, ___, ___o],
+    [token_type.native]: [___, ___, ___o],
+    [token_type.algebra_string]: [___, ___, ___o],
+  };
+  /**
+   * Returns the prefix parsing rule mapped to by the given
+   * token type.
+   */
+  const prefixRule = (t: token_type): Parslet<Expr> => rules[t][0];
+
+  /**
+   * Returns the infix parsing rule mapped to by the given
+   * token type.
+   */
+  const infixRule = (t: token_type): Parslet<Expr> => rules[t][1];
+
+  /**
+   * Returns the {@link bp|precedence} of the given token type.
+   */
+  const precof = (t: token_type): bp => rules[t][2];
+
+  const expr = (minbp: number = bp.lowest): Either<Err, Expr> => {
+    let token = state.next();
+    const pre = prefixRule(token.$type);
+    let lhs = pre(token, emptyExpr());
+    if (lhs.isLeft()) return lhs;
+    while (minbp < precof(state.$peek.$type)) {
+      if (state.atEnd()) break;
+      token = state.next();
+      const r = infixRule(token.$type);
+      const rhs = r(token, lhs.unwrap());
+      if (rhs.isLeft()) return rhs;
+      lhs = rhs;
+    }
+    return lhs;
+  };
 }
