@@ -1608,6 +1608,7 @@ enum nodekind {
   matrix_expression,
   factorial_expression,
   assignment_expression,
+  parend_expression,
   not_expression,
   native_call,
   algebraic_infix,
@@ -1656,6 +1657,7 @@ interface Visitor<T> {
   vectorBinex(node: VectorBinex): T;
   algebraicBinex(node: AlgebraicBinex): T;
   callExpr(node: CallExpr): T;
+  parendExpr(node: ParendExpr): T;
   // Literals
   bigInteger(node: BigInteger): T;
   sym(node: Sym): T;
@@ -2314,6 +2316,7 @@ function algebraicBinex(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
 }
 // TODO - Implement Call Expression
 
+/** An AST node corresponding to a function call expression. */
 class CallExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.callExpr(this);
@@ -2342,7 +2345,29 @@ function callExpr(callee: Expr, paren: Token, args: Expr[]) {
   return new CallExpr(callee, paren, args);
 }
 
-// TODO - Implement Group Expression
+// TODO - Implement Parenthesized Expression
+/** An AST node corresponding to a parenthesized expression. */
+class ParendExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.parendExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.parend_expression;
+  }
+  toString(): string {
+    return `(${this.$inner.toString()})`
+  }
+  $inner: Expr;
+  constructor(innerExpression: Expr) {
+    super();
+    this.$inner =  innerExpression;
+  }
+}
+
+/** Returns a new parenthesized expression node. */
+function parendExpr(innerExpression: Expr) {
+  return new ParendExpr(innerExpression);
+}
 // TODO - Implement Nil Expression
 // TODO - Implement Fraction Expression
 // TODO - Implement Numeric Constant Expression
