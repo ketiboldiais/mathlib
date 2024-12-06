@@ -1679,6 +1679,7 @@ interface Visitor<T> {
   getExpr(node: GetExpr): T;
   setExpr(node: SetExpr): T;
   superExpr(node: SuperExpr): T;
+  thisExpr(node: ThisExpr): T;
   sym(node: Sym): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
@@ -2578,6 +2579,25 @@ function superExpr(method: Token) {
   return new SuperExpr(method);
 } 
 
-// TODO - Implement This Expression
+/** An AST node corresponding to a this expression. */
+class ThisExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.thisExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.this_expression;
+  }
+  toString(): string {
+    return `this`;
+  }
+  $keyword: Token;
+  constructor(keyword: Token) {
+    super();
+    this.$keyword = keyword;
+  }
+}
 
-// TODO - Implement Big Rationals
+/** Returns a new this-expression node. */
+function thisExpr(keyword: Token) {
+  return new ThisExpr(keyword);
+}
