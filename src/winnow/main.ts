@@ -1608,15 +1608,13 @@ export function lexical(code: string) {
 enum nodekind {
   class_statement,
   block_statement,
-  string_binex,
-  grouped_expression,
-  negation_expression,
   expression_statement,
+  negation_expression,
   function_declaration,
+  variable_declaration,
   if_statement,
   print_statement,
   return_statement,
-  variable_declaration,
   algebraic_binex,
   vector_binex,
   while_statement,
@@ -1629,13 +1627,8 @@ enum nodekind {
   parend_expression,
   not_expression,
   native_call,
-  algebraic_infix,
-  logical_unary,
   call_expression,
-  nil,
-  fraction_expression,
   numeric_constant,
-  string,
   symbol,
   logical_binex,
   let_expression,
@@ -1645,13 +1638,11 @@ enum nodekind {
   this_expression,
   relation_expression,
   index_expression,
-  big_integer,
-  big_rational,
   literal,
 }
 
 interface Visitor<T> {
-  blockStmt(node: BlockStatement): T;
+  blockStmt(node: BlockStmt): T;
   exprStmt(node: ExprStmt): T;
   fnStmt(node: FnStmt): T;
   ifStmt(node: IfStmt): T;
@@ -1659,6 +1650,7 @@ interface Visitor<T> {
   returnStmt(node: ReturnStmt): T;
   variableStmt(node: VariableStmt): T;
   whileStmt(node: WhileStmt): T;
+  classStmt(node: ClassStmt): T;
   // expressions
   indexExpr(node: IndexExpr): T;
   algebraString(node: AlgebraString): T;
@@ -1708,10 +1700,33 @@ abstract class Statement extends ASTNode {
   }
 }
 
-// TODO - Class Statement Node
+/** A node corresponding to a class statement node. */
+class ClassStmt extends Statement {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.classStmt(this);
+  }
+  kind(): nodekind {
+    return nodekind.class_statement;
+  }
+  toString(): string {
+    return `class-statement`;
+  }
+  $name: Token;
+  $methods: FnStmt[];
+  constructor(name: Token, methods: FnStmt[]) {
+    super();
+    this.$name = name;
+    this.$methods = methods;
+  }
+}
+
+/** Returns a new class statement node. */
+function classStmt(name: Token, methods: FnStmt[]) {
+  return new ClassStmt(name, methods);
+}
 
 /** A node corresponding to a block statement node. */
-class BlockStatement extends Statement {
+class BlockStmt extends Statement {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.blockStmt(this);
   }
@@ -1730,13 +1745,13 @@ class BlockStatement extends Statement {
 }
 
 /** Returns true, and asserts, iff the given node is a block statement node. */
-function isBlockStmt(node: ASTNode): node is BlockStatement {
+function isBlockStmt(node: ASTNode): node is BlockStmt {
   return node.kind() === nodekind.block_statement;
 }
 
 /** Returns a new block statement node. */
 function blockStmt(statements: Statement[]) {
-  return new BlockStatement(statements);
+  return new BlockStmt(statements);
 }
 
 /** A node corresponding to an expression statement. */
