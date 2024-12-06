@@ -539,7 +539,8 @@ class Err extends Error {
     this.$line = line;
   }
   toString() {
-    return this.message;
+    const a = this.$type === "environment-error" ? "an" : "a";
+    return `On line ${this.$line}, ${a} ${this.$type} occured: ${this.message}`;
   }
 }
 
@@ -844,7 +845,8 @@ class Token<
   /** Returns a string form of this token. */
   toString() {
     return `{token: ${token_type[this.$type]}, lexeme: ${this.$lexeme}, line: ${
-      this.$line}, literal: ${this.$literal}}`;
+      this.$line
+    }, literal: ${this.$literal}}`;
   }
 }
 
@@ -2372,8 +2374,18 @@ class Literal extends Expr {
 }
 
 /** Returns a new literal node. */
-function literal(value: Token<LiteralTokenType>) {
+function lit(value: Token<LiteralTokenType>) {
   return new Literal(value);
+}
+
+/** Returns an empty expression (nil value). */
+function emptyExpr() {
+  return lit(token(token_type.nil, "nil", -1).withLiteral(null));
+}
+
+/** Returns an empty statement. */
+function emptyStmt() {
+  return exprStmt(emptyExpr());
 }
 
 /** An AST node corresponding to a numeric constant expression. */
@@ -2623,6 +2635,7 @@ class ParserState<STMT extends TreeNode, EXPR extends TreeNode> {
     this.$lastStmt = prev;
     return right(statement);
   }
+
   /** Moves the parser state forward. */
   next() {
     this.$cursor++;
@@ -2640,5 +2653,77 @@ class ParserState<STMT extends TreeNode, EXPR extends TreeNode> {
     return this.lexer.atEnd() || this.$error !== null;
   }
 
-  error(message: string, line: number) {}
+  /** Returns a new error in a LEFT monad. */
+  error(message: string, line: number) {
+    const e = syntaxError(message, line);
+    this.$error = e;
+    return left(e);
+  }
+
+  /** Returns true if the current token is of the given type. */
+  check(type: token_type) {
+    if (this.atEnd()) return false;
+    return this.$peek.isType(type);
+  }
+
+  /** Returns true and moves the parser forward if the next token is of the given type.  */
+  nextIs(type: token_type) {
+    if (this.$peek.isType(type)) {
+      this.next();
+      return true;
+    }
+    return false;
+  }
+}
+
+/**
+ * A function that returns a new parser state.
+ * @param nilExpr A nil expression to serve as a placeholder expression.
+ * @param emptyStmt An empty statement to serve as a placeholder statement.
+ * @returns A new Parser State.
+ */
+function enstate<EXPR extends TreeNode, STMT extends TreeNode>(
+  nilExpr: EXPR,
+  emptyStmt: STMT
+) {
+  return new ParserState(nilExpr, emptyStmt);
+}
+
+/** The binding power of a given operator. Values of type `bp` are used the parsers to determinate operator precedence (both the Twine and CAM parsers use Pratt parsing for expressions). */
+enum bp {
+  nil,
+  lowest,
+  stringop,
+  assign,
+  atom,
+  or,
+  nor,
+  and,
+  nand,
+  xor,
+  xnor,
+  not,
+  eq,
+  rel,
+  sum,
+  difference,
+  product,
+  quotient,
+  imul,
+  power,
+  postfix,
+  call,
+}
+
+/** @internal A Pratt parsing function. */
+type Parslet<T> = (current: Token, lastNode: T) => Either<Err, T>;
+
+/** @internal An entry within parser’s BP table. The first element is a prefix parslet, the second element is an infix parslet, and the last element is the binding power of the operator. */
+type ParsletEntry<T> = [Parslet<T>, Parslet<T>, bp];
+
+/** @internal A record of parslet entries, where each key is a token type (`tt`). */
+type BPTable<T> = Record<token_type, ParsletEntry<T>>;
+
+function syntax(source: string) {
+  const state = enstate<Expr, Statement>(emptyExpr(), emptyStmt()).init(source);
 }
