@@ -2981,7 +2981,13 @@ type ParsletEntry<T> = [Parslet<T>, Parslet<T>, bp];
 /** @internal A record of parslet entries, where each key is a token type (`tt`). */
 type BPTable<T> = Record<token_type, ParsletEntry<T>>;
 
-function syntax(source: string) {
+/**
+ * @param source - the source code to parse.
+ * @returns An object with two methods:
+ * 1. parsex - parses a single expression.
+ * 2. parset - parses a list of statements.
+ */
+export function syntax(source: string) {
   /** Begin by initializing the state. */
   const state = enstate<Expr, Statement>(nil(), emptyStmt()).init(source);
 
@@ -3238,6 +3244,7 @@ function syntax(source: string) {
     });
   };
 
+  /* Parses a prefix expression. */
   const prefix: Parslet<Expr> = (op) => {
     const p = precof(op.$type);
     const a = expr(p);
@@ -3334,6 +3341,7 @@ function syntax(source: string) {
     }
   };
 
+  /* Parses a native constant. */
   const constant = (op: Token) => {
     const type = op.$type;
     const erm = `Unexpected constant "${op.$lexeme}"`;
@@ -3423,7 +3431,7 @@ function syntax(source: string) {
       );
     });
   };
-  
+
   /** Parses a fraction literal. */
   const fract = (op: Token) => {
     if (op.isType(token_type.fraction) && op.$literal instanceof Fraction) {
@@ -3431,11 +3439,14 @@ function syntax(source: string) {
     } else {
       return state.error(`Unexpected fraction`, op.$line);
     }
-  }
-  
+  };
+
   /* Parses an algebraic string literal */
   const algString = (op: Token) => {
-    if (op.isType(token_type.algebra_string) && typeof op.$literal === 'string') {
+    if (
+      op.isType(token_type.algebra_string) &&
+      typeof op.$literal === "string"
+    ) {
       const tkns = op.$literal;
       const t = token(token_type.algebra_string, "", op.$line);
       const result = syntax(tkns).parsex();
@@ -3445,11 +3456,10 @@ function syntax(source: string) {
     } else {
       return state.error(`Unexpected algebraic string`, op.$line);
     }
-  }
-  
+  };
+
   /* Parses a this expression. */
   const thisExpression = (t: Token) => state.newExpr(thisExpr(t));
-  
 
   /**
    * The rules table comprises mappings from every
@@ -3588,9 +3598,28 @@ function syntax(source: string) {
     }
     return lhs;
   };
-  
+
+  // Statement parsers hereinafter.
+  const EXPRESSION = () => {
+    const out = expr();
+    if (out.isLeft()) return out;
+    const expression = out.unwrap();
+    if (state.nextIs(token_type.semicolon) || state.implicitSemicolonOK()) {
+      return state.newStmt(exprStmt(expression));
+    } else {
+      return state.error(
+        `Expected ";" to end the statement`,
+        state.$current.$line
+      );
+    }
+  };
+
+  const STATEMENT = () => {
+    return EXPRESSION();
+  };
+
   return {
-    /* Returns a syntax analysis of a single expression. */
+    /** Returns a syntax analysis of a single expression. */
     parsex() {
       if (state.$error !== null) {
         return left(state.$error);
@@ -3598,6 +3627,21 @@ function syntax(source: string) {
         const out = expr();
         return out;
       }
-    }
-  }
+    },
+    /** Returns a syntax analysis of the source code's statements. */
+    parset() {
+      if (state.$error !== null) {
+        return left(state.$error);
+      }
+      const statements: Statement[] = [];
+      while (!state.atEnd()) {
+        const statement = STATEMENT();
+        if (statement.isLeft()) {
+          return statement;
+        }
+        statements.push(statement.unwrap());
+      }
+      return right(statements);
+    },
+  };
 }
