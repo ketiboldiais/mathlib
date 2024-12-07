@@ -593,7 +593,7 @@ class Scientific_Number {
     this.$n = Math.floor(n);
   }
   toString() {
-    return `${this.$m}E{${this.$n}}`
+    return `${this.$m}E{${this.$n}}`;
   }
 }
 
@@ -1609,7 +1609,6 @@ enum nodekind {
   this_expression,
   relation_expression,
   index_expression,
-  literal,
   string,
   bool,
   integer,
@@ -1660,7 +1659,6 @@ interface Visitor<T> {
   bigInteger(node: BigInteger): T;
   sciNum(node: SciNum): T;
   frac(node: Frac): T;
-  literal(node: Literal): T;
   numConst(node: NumConst): T;
 }
 
@@ -2460,7 +2458,7 @@ class Integer extends Expr {
     return `${this.$value}`;
   }
   $value: number;
-  constructor(value:number) {
+  constructor(value: number) {
     super();
     this.$value = value;
   }
@@ -2482,7 +2480,7 @@ class Float extends Expr {
     return `${this.$value}`;
   }
   $value: number;
-  constructor(value:number) {
+  constructor(value: number) {
     super();
     this.$value = value;
   }
@@ -2560,37 +2558,9 @@ function frac(value: Fraction) {
   return new Frac(value);
 }
 
-/** An AST node corresponding to a literal expression. */
-class Literal extends Expr {
-  accept<T>(visitor: Visitor<T>): T {
-    return visitor.literal(this);
-  }
-  kind(): nodekind {
-    return nodekind.literal;
-  }
-  toString(): string {
-    return this.$value.$lexeme;
-  }
-  $value: Token<LiteralTokenType>;
-  constructor(value: Token<LiteralTokenType>) {
-    super();
-    this.$value = value;
-  }
-}
-
-/** Returns a new literal node. */
-function lit(value: Token<LiteralTokenType>) {
-  return new Literal(value);
-}
-
-/** Returns an empty expression (nil value). */
-function emptyExpr() {
-  return lit(token(token_type.nil, "nil", -1).withLiteral(null));
-}
-
 /** Returns an empty statement. */
 function emptyStmt() {
-  return exprStmt(emptyExpr());
+  return exprStmt(nil());
 }
 
 /** An AST node corresponding to a numeric constant expression. */
@@ -2931,7 +2901,7 @@ type BPTable<T> = Record<token_type, ParsletEntry<T>>;
 
 function syntax(source: string) {
   /** Begin by initializing the state. */
-  const state = enstate<Expr, Statement>(emptyExpr(), emptyStmt()).init(source);
+  const state = enstate<Expr, Statement>(nil(), emptyStmt()).init(source);
 
   /**
    * The “blank” binding power. This particular binding power
@@ -3082,7 +3052,7 @@ function syntax(source: string) {
   const expr = (minbp: number = bp.lowest): Either<Err, Expr> => {
     let token = state.next();
     const pre = prefixRule(token.$type);
-    let lhs = pre(token, emptyExpr());
+    let lhs = pre(token, nil());
     if (lhs.isLeft()) return lhs;
     while (minbp < precof(state.$peek.$type)) {
       if (state.atEnd()) break;
