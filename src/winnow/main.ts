@@ -2055,6 +2055,11 @@ function vectorExpr(op: Token, elements: Expr[]) {
   return new VectorExpr(op, elements);
 }
 
+/** Returns true, and asserts, if the given node is a vector expression node. */
+function isVectorExpr(node: ASTNode): node is VectorExpr {
+  return node.kind() === nodekind.vector_expression;
+}
+
 /** A node corresponding to a matrix expression. */
 class MatrixExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2924,7 +2929,7 @@ function syntax(source: string) {
   };
 
   /** Parses a parenthesized expression */
-  const parenthesized_expression = () => {
+  const primary = () => {
     const innerExpression = expr();
     if (innerExpression.isLeft()) return innerExpression;
     if (state.nextIs(token_type.comma)) {
@@ -2947,16 +2952,106 @@ function syntax(source: string) {
     return innerExpression.map((e) => parendExpr(e));
   };
 
+  const allowImplicit = (kind: nodekind) =>
+    kind === nodekind.algebraic_binex ||
+    kind === nodekind.negation_expression ||
+    kind === nodekind.float ||
+    kind === nodekind.numeric_constant ||
+    kind === nodekind.native_call ||
+    kind === nodekind.integer ||
+    kind === nodekind.parend_expression;
+
+  const commaSepList = <E extends Expr>(
+    filter: (e: Expr) => e is E,
+    errorMessage: string
+  ) => {
+    const elements: E[] = [];
+    do {
+      const e = expr();
+      if (e.isLeft()) return e;
+      const element = e.unwrap();
+      if (!filter(element)) {
+        return state.error(errorMessage, state.$current.$line);
+      }
+      elements.push(element);
+    } while (state.nextIs(token_type.comma));
+    return right(elements);
+  };
+
   /** Parses a function call expression */
-  const function_call = (op: Token, node: Expr) => {
+  const funCall = (op: Token, node: Expr) => {
     const callee = node;
+    // If the callee is a parenthesized expression, we want to check
+    // if this is implicit multiplication.
+    // E.g., (x + 2)(y + 9)
+    if (isParendExpr(callee) && allowImplicit(callee.$inner.kind())) {
+      const left = callee.$inner;
+      const r = expr();
+      if (r.isLeft()) return r;
+      if (!state.nextIs(token_type.right_paren)) {
+        return state.error(`Expected a closing ")"`, state.$current.$line);
+      }
+      const right = r.unwrap();
+      const star = token(token_type.star, "*", state.$current.$line);
+      return state.newExpr(algebraicBinex(left, star, right));
+    }
+    let args: Expr[] = [];
+    if (!state.check(token_type.right_paren)) {
+      const arglist = commaSepList(
+        (node): node is Expr => node instanceof Expr,
+        "Expected an expression"
+      );
+      if (arglist.isLeft()) return arglist;
+      args = arglist.unwrap();
+    }
+    const paren = state.next();
+    if (!paren.isType(token_type.right_paren)) {
+      return state.error('Expected a closing ")', paren.$line);
+    }
+    return state.newExpr(callExpr(callee, op, args));
+  };
+
+  /** Parses a vector expression */
+  const vectorExpression = (prev: Token) => {
+    const elements: Expr[] = [];
+    const vectors: VectorExpr[] = [];
+    let rows = 0;
+    let columns = 0;
+    if (!state.check(token_type.right_bracket)) {
+      do {
+        const elem = expr();
+        if (elem.isLeft()) return elem;
+        const element = elem.unwrap();
+        // if this element is a vector expression, then we have a matrix
+        if (isVectorExpr(element)) {
+          rows++;
+          columns = element.$elements.length;
+          vectors.push(element);
+        } else {
+          elements.push(element);
+        }
+      } while (state.nextIs(token_type.comma) && !state.atEnd());
+    }
+    if (!state.nextIs(token_type.right_bracket)) {
+      return state.error(`Expected a right bracket "]"`, state.$current.$line);
+    }
+    if (vectors.length !== 0) {
+      if (vectors.length !== columns) {
+        return state.error(
+          `Encountered a jagged matrix.`,
+          state.$current.$line
+        );
+      }
+      return state.newExpr(matrixExpr(vectors, rows, columns));
+    }
+    return state.newExpr(vectorExpr(prev, elements));
   };
 
   const rules: BPTable<Expr> = {
     [token_type.end]: [___, ___, ___o],
     [token_type.error]: [___, ___, ___o],
     [token_type.empty]: [___, ___, ___o],
-    [token_type.left_paren]: [parenthesized_expression, ___, ___o],
+    [token_type.left_paren]: [primary, funCall, bp.call],
     [token_type.right_paren]: [___, ___, ___o],
     [token_type.left_brace]: [___, ___, ___o],
     [token_type.right_brace]: [___, ___, ___o],
