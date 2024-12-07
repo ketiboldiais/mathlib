@@ -1616,6 +1616,7 @@ enum nodekind {
   big_integer,
   scientific_number,
   float,
+  frac,
   nil,
 }
 
@@ -1658,6 +1659,7 @@ interface Visitor<T> {
   float(node: Float): T;
   bigInteger(node: BigInteger): T;
   sciNum(node: SciNum): T;
+  frac(node: Frac): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
 }
@@ -2533,6 +2535,29 @@ class SciNum extends Expr {
 /** Returns a new scientific number node. */
 function scinum(value: Scientific_Number) {
   return new SciNum(value);
+}
+
+/** An AST node corresponding to a fraction. */
+class Frac extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.frac(this);
+  }
+  kind(): nodekind {
+    return nodekind.frac;
+  }
+  toString(): string {
+    return this.$value.toString();
+  }
+  $value: Fraction;
+  constructor(value: Fraction) {
+    super();
+    this.$value = value;
+  }
+}
+
+/* Returns a new fraction node. */
+function frac(value: Fraction) {
+  return new Frac(value);
 }
 
 /** An AST node corresponding to a literal expression. */
