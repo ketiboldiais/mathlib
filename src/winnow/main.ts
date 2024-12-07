@@ -3432,6 +3432,21 @@ function syntax(source: string) {
       return state.error(`Unexpected fraction`, op.$line);
     }
   }
+  
+  /* Parses an algebraic string literal */
+  const algString = (op: Token) => {
+    if (op.isType(token_type.algebra_string) && typeof op.$literal === 'string') {
+      const tkns = op.$literal;
+      const t = token(token_type.algebra_string, "", op.$line);
+      const result = syntax(tkns).parsex();
+      if (result.isLeft()) return result;
+      const expression = result.unwrap();
+      return state.newExpr(algebraString(expression, op));
+    } else {
+      return state.error(`Unexpected algebraic string`, op.$line);
+    }
+  }
+  
 
   /**
    * The rules table comprises mappings from every
@@ -3496,12 +3511,12 @@ function syntax(source: string) {
     [token_type.pound_minus]: [___, ___, ___o],
     [token_type.pound_star]: [___, ___, ___o],
 
+    // Literals
     [token_type.integer]: [number, ___, bp.atom],
     [token_type.float]: [number, ___, bp.atom],
     [token_type.fraction]: [fract, ___, bp.atom],
     [token_type.scientific]: [___, ___, ___o],
     [token_type.big_integer]: [___, ___, ___o],
-
     [token_type.symbol]: [varname, impMul, bp.atom],
     [token_type.string]: [stringLiteral, ___, bp.atom],
     [token_type.boolean]: [boolLiteral, ___, bp.atom],
@@ -3509,7 +3524,7 @@ function syntax(source: string) {
     [token_type.inf]: [constant, ___, bp.atom],
     [token_type.nil]: [constant, ___, bp.atom],
     [token_type.numeric_constant]: [constant, ___, bp.atom],
-    [token_type.algebraic]: [___, ___, ___o],
+    [token_type.algebraic]: [algString, ___, bp.atom],
 
     // logical operations
     [token_type.and]: [___, logicInfix, bp.and],
@@ -3570,4 +3585,16 @@ function syntax(source: string) {
     }
     return lhs;
   };
+  
+  return {
+    /* Returns a syntax analysis of a single expression. */
+    parsex() {
+      if (state.$error !== null) {
+        return left(state.$error);
+      } else {
+        const out = expr();
+        return out;
+      }
+    }
+  }
 }
