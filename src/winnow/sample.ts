@@ -11700,7 +11700,7 @@ function syntax(source: string) {
     [tt.amp]: [___, string_infix, bp.stringop],
     [tt.tilde]: [___, ___, ___o],
     [tt.vbar]: [___, ___, ___o],
-    [tt.eq]: [___, assignment, bp.assign],
+    [tt.eq]: [___, assignment, bp.assign], // done
     [tt.bang]: [___, factorial_expression, bp.postfix],
     [tt.plus_plus]: [___, increment, bp.postfix],
     [tt.minus_minus]: [___, decrement, bp.postfix],

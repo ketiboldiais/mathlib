@@ -2111,6 +2111,11 @@ function sym(symbol: Token<token_type.symbol>) {
   return new Sym(symbol);
 }
 
+/** Returns true, and asserts, if the given node is a symbol node. */
+function isSymbol(node: ASTNode): node is Sym {
+  return node.kind() === nodekind.symbol;
+}
+
 /** An AST node corresponding to an assignment expression. */
 class AssignmentExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -3089,6 +3094,29 @@ function syntax(source: string) {
     return state.newExpr(exp);
   };
 
+  /** Parses an assignment expression */
+  const assignment = (op: Token, node: Expr) => {
+    if (isSymbol(node)) {
+      return expr().chain((n) => state.newExpr(assignmentExpr(node, n)));
+    } else if (isGetExpr(node)) {
+      const rhs = expr();
+      if (rhs.isLeft()) return rhs;
+      return state.newExpr(setExpr(node.$object, node.$name, rhs.unwrap()));
+    } else {
+      return state.error(
+        `Expected a valid assignment target, but got ${node.toString()}`,
+        state.$current.$line
+      );
+    }
+  };
+
+  /**
+   * The rules table comprises mappings from every
+   * token type to a triple `(Prefix, Infix, B)`,
+   * where `Prefix` and `Infix` are parslets (small
+   * parsers that handle a single grammar rule), and `B` is a
+   * binding power.
+   */
   const rules: BPTable<Expr> = {
     [token_type.end]: [___, ___, ___o],
     [token_type.error]: [___, ___, ___o],
@@ -3113,7 +3141,7 @@ function syntax(source: string) {
     [token_type.ampersand]: [___, ___, ___o],
     [token_type.tilde]: [___, ___, ___o],
     [token_type.vbar]: [___, ___, ___o],
-    [token_type.equal]: [___, ___, ___o],
+    [token_type.equal]: [___, assignment, bp.assign],
     [token_type.less]: [___, ___, ___o],
     [token_type.greater]: [___, ___, ___o],
     [token_type.less_equal]: [___, ___, ___o],
