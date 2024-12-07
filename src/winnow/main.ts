@@ -1606,6 +1606,7 @@ enum nodekind {
   factorial_expression,
   assignment_expression,
   parend_expression,
+  string_concatenation,
   not_expression,
   native_call,
   call_expression,
@@ -1661,6 +1662,7 @@ interface Visitor<T> {
   setExpr(node: SetExpr): T;
   superExpr(node: SuperExpr): T;
   thisExpr(node: ThisExpr): T;
+  stringConcat(node: StringConcatExpr): T;
   sym(node: Sym): T;
   string(node: StringLit): T;
   bool(node: Bool): T;
@@ -2742,7 +2744,40 @@ function getExpr(object: Expr, name: Token) {
 function isGetExpr(node: ASTNode): node is GetExpr {
   return node.kind() === nodekind.get_expression;
 }
-// TODO - Implement Set Expression
+
+/* An AST node corresponding to a string concatenation expression. */
+class StringConcatExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.stringConcat(this);
+  }
+  kind(): nodekind {
+    return nodekind.string_concatenation;
+  }
+  toString(): string {
+    const left = this.$left.toString();
+    const right = this.$right.toString();
+    return `${left} & ${right}`;
+  }
+  $left: Expr;
+  $op: Token<token_type.ampersand>;
+  $right: Expr;
+  constructor(left: Expr, op: Token<token_type.ampersand>, right: Expr) {
+    super();
+    this.$left = left;
+    this.$op = op;
+    this.$right = right;
+  }
+}
+
+/* Returns a new string concatenation node. */
+function stringConcat(
+  left: Expr,
+  op: Token<token_type.ampersand>,
+  right: Expr
+) {
+  return new StringConcatExpr(left, op, right);
+}
+
 /** An AST node corresponding to a set expression. */
 class SetExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -3379,6 +3414,25 @@ function syntax(source: string) {
     return state.newExpr(nativeCall(op as Token<token_type.native>, args));
   };
 
+  /* Parses a string concatenation expression. */
+  const concatenation: Parslet<Expr> = (op: Token, left: Expr) => {
+    const p = precof(op.$type);
+    return expr(p).chain((right) => {
+      return state.newExpr(
+        stringConcat(left, op as Token<token_type.ampersand>, right)
+      );
+    });
+  };
+  
+  /** Parses a fraction literal. */
+  const fract = (op: Token) => {
+    if (op.isType(token_type.fraction) && op.$literal instanceof Fraction) {
+      return state.newExpr(frac(op.$literal));
+    } else {
+      return state.error(`Unexpected fraction`, op.$line);
+    }
+  }
+
   /**
    * The rules table comprises mappings from every
    * token type to a triple `(Prefix, Infix, B)`,
@@ -3412,7 +3466,7 @@ function syntax(source: string) {
     [token_type.div]: [___, infix, bp.quotient],
 
     [token_type.bang]: [___, factorialExpression, bp.postfix],
-    [token_type.ampersand]: [___, ___, ___o],
+    [token_type.ampersand]: [___, concatenation, bp.stringop],
     [token_type.tilde]: [___, ___, ___o],
     [token_type.vbar]: [___, ___, ___o],
     [token_type.equal]: [___, assignment, bp.assign],
@@ -3444,7 +3498,7 @@ function syntax(source: string) {
 
     [token_type.integer]: [number, ___, bp.atom],
     [token_type.float]: [number, ___, bp.atom],
-    [token_type.fraction]: [___, ___, ___o],
+    [token_type.fraction]: [fract, ___, bp.atom],
     [token_type.scientific]: [___, ___, ___o],
     [token_type.big_integer]: [___, ___, ___o],
 
@@ -3479,7 +3533,9 @@ function syntax(source: string) {
     [token_type.super]: [___, ___, ___o],
     [token_type.this]: [___, ___, ___o],
 
-    [token_type.native]: [___, ___, ___o],
+    // native calls
+    [token_type.native]: [ncall, ___, bp.call],
+
     [token_type.algebra_string]: [___, ___, ___o],
   };
   /**

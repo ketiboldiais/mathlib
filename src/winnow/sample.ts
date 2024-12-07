@@ -11697,7 +11697,7 @@ function syntax(source: string) {
     [tt.comma]: [___, ___, ___o],
     [tt.super]: [___, ___, ___o],
 
-    [tt.amp]: [___, string_infix, bp.stringop],
+    [tt.amp]: [___, string_infix, bp.stringop], // done
     [tt.tilde]: [___, ___, ___o],
     [tt.vbar]: [___, ___, ___o],
     [tt.eq]: [___, assignment, bp.assign], // done
@@ -11748,7 +11748,7 @@ function syntax(source: string) {
     [tt.bignumber]: [big_number, ___, bp.atom],
     [tt.bigfraction]: [big_rational, ___, bp.atom],
     [tt.scientific]: [scientific_number, ___, bp.atom],
-    [tt.fraction]: [fraction, ___, bp.atom],
+    [tt.fraction]: [fraction, ___, bp.atom], // done
     [tt.nan]: [constant, ___, bp.atom], // done
     [tt.inf]: [constant, ___, bp.atom], // done
     [tt.nil]: [constant, ___, bp.atom], // done
@@ -11757,7 +11757,7 @@ function syntax(source: string) {
     [tt.algebra_string]: [algebraic_string, ___, bp.atom],
 
     // native calls
-    [tt.native]: [native_call, ___, bp.call],
+    [tt.native]: [native_call, ___, bp.call], // done
 
     [tt.if]: [___, ___, ___o],
     [tt.else]: [___, ___, ___o],
