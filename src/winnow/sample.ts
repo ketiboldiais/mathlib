@@ -11701,15 +11701,15 @@ function syntax(source: string) {
     [tt.tilde]: [___, ___, ___o],
     [tt.vbar]: [___, ___, ___o],
     [tt.eq]: [___, assignment, bp.assign], // done
-    [tt.bang]: [___, factorial_expression, bp.postfix],
-    [tt.plus_plus]: [___, increment, bp.postfix],
-    [tt.minus_minus]: [___, decrement, bp.postfix],
+    [tt.bang]: [___, factorial_expression, bp.postfix], // done
+    [tt.plus_plus]: [___, increment, bp.postfix], // done
+    [tt.minus_minus]: [___, decrement, bp.postfix], // done
     
     // vector expressions
-    [tt.dot_add]: [___, vector_infix, bp.sum],
-    [tt.dot_minus]: [___, vector_infix, bp.sum],
-    [tt.dot_star]: [___, vector_infix, bp.product],
-    [tt.dot_caret]: [___, vector_infix, bp.power],
+    [tt.dot_add]: [___, vector_infix, bp.sum], // done
+    [tt.dot_minus]: [___, vector_infix, bp.sum], // done
+    [tt.dot_star]: [___, vector_infix, bp.product], // done
+    [tt.dot_caret]: [___, vector_infix, bp.power], // done
 
     // algebraic expressions
     [tt.plus]: [prefix, infix, bp.sum],

@@ -3105,9 +3105,48 @@ function syntax(source: string) {
     } else {
       return state.error(
         `Expected a valid assignment target, but got ${node.toString()}`,
+        op.$line
+      );
+    }
+  };
+
+  /** Returns a factorial expression parser. */
+  const factorialExpression = (op: Token, node: Expr) => {
+    if (op.isType(token_type.bang)) {
+      return state.newExpr(factorialExpr(op, node));
+    }
+    return state.error(`Expected "!" but got ${op.$lexeme}`, op.$line);
+  };
+
+  /** Returns an increment or decrement parser. */
+  const incdec = (operator: "+" | "-") => (op: Token, node: Expr) => {
+    const tt = operator === "+" ? token_type.plus : token_type.minus;
+    if (isSymbol(node)) {
+      const right = algebraicBinex(
+        node,
+        token(tt, operator, op.$line),
+        integer(1)
+      );
+      return state.newExpr(assignmentExpr(node, right));
+    } else {
+      return state.error(
+        `Expected the lefthand side of "${operator}${operator}" to be either a variable or property accessor, but got ${node.toString()}`,
         state.$current.$line
       );
     }
+  };
+
+  /** Parses a decrement expression. */
+  const decrementExpression = incdec("-");
+
+  /** Parses an increment expression. */
+  const incrementExpression = incdec("+");
+
+  const vectorInfix: Parslet<Expr> = (op, left) => {
+    const p = precof(op.$type);
+    return expr(p).chain((right) =>
+      state.newExpr(vectorBinex(left, op as Token<VectorBinop>, right))
+    );
   };
 
   /**
@@ -3137,7 +3176,7 @@ function syntax(source: string) {
     [token_type.slash]: [___, ___, ___o],
     [token_type.caret]: [___, ___, ___o],
     [token_type.percent]: [___, ___, ___o],
-    [token_type.bang]: [___, ___, ___o],
+    [token_type.bang]: [___, factorialExpression, bp.postfix],
     [token_type.ampersand]: [___, ___, ___o],
     [token_type.tilde]: [___, ___, ___o],
     [token_type.vbar]: [___, ___, ___o],
@@ -3148,13 +3187,13 @@ function syntax(source: string) {
     [token_type.greater_equal]: [___, ___, ___o],
     [token_type.bang_equal]: [___, ___, ___o],
     [token_type.equal_equal]: [___, ___, ___o],
-    [token_type.plus_plus]: [___, ___, ___o],
-    [token_type.minus_minus]: [___, ___, ___o],
+    [token_type.plus_plus]: [___, incrementExpression, bp.postfix],
+    [token_type.minus_minus]: [___, decrementExpression, bp.postfix],
     [token_type.star_star]: [___, ___, ___o],
-    [token_type.dot_add]: [___, ___, ___o],
-    [token_type.dot_star]: [___, ___, ___o],
-    [token_type.dot_minus]: [___, ___, ___o],
-    [token_type.dot_caret]: [___, ___, ___o],
+    [token_type.dot_add]: [___, vectorInfix, bp.sum],
+    [token_type.dot_star]: [___, vectorInfix, bp.product],
+    [token_type.dot_minus]: [___, vectorInfix, bp.sum],
+    [token_type.dot_caret]: [___, vectorInfix, bp.power],
     [token_type.at]: [___, ___, ___o],
     [token_type.pound_plus]: [___, ___, ___o],
     [token_type.pound_minus]: [___, ___, ___o],
