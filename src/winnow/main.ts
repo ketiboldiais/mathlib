@@ -1584,6 +1584,241 @@ export function lexical(code: string) {
   return { stream, scan, atEnd };
 }
 
+abstract class MJSON {}
+abstract class StmtJSON extends MJSON {}
+
+class IfStmtJSON extends StmtJSON {
+  if: ExprJSON;
+  then: StmtJSON;
+  else: StmtJSON;
+  constructor($if: ExprJSON, $then: StmtJSON, $else: StmtJSON) {
+    super();
+    this.if = $if;
+    this.then = $then;
+    this.else = $else;
+  }
+}
+
+function branch($if: ExprJSON, $then: StmtJSON, $else: StmtJSON) {
+  return new IfStmtJSON($if, $then, $else);
+}
+
+class ClassStmtJSON extends StmtJSON {
+  class: string;
+  methods: FnStmtJSON[];
+  constructor($class: string, methods: FnStmtJSON[]) {
+    super();
+    this.class = $class;
+    this.methods = methods;
+  }
+}
+
+function classDef(classname: string, methods: FnStmtJSON[]) {
+  return new ClassStmtJSON(classname, methods);
+}
+
+class WhileStmtJSON extends StmtJSON {
+  while: ExprJSON;
+  do: StmtJSON;
+  constructor($while: ExprJSON, $do: StmtJSON) {
+    super();
+    this.while = $while;
+    this.do = $do;
+  }
+}
+
+function loop(condition: ExprJSON, body: StmtJSON) {
+  return new WhileStmtJSON(condition, body);
+}
+
+class VarStmtJSON extends StmtJSON {
+  def: [SymJSON, ExprJSON];
+  constructor(sym: SymJSON, value: ExprJSON) {
+    super();
+    this.def = [sym, value];
+  }
+}
+
+function vardef(sym: SymJSON, value: ExprJSON) {
+  return new VarStmtJSON(sym, value);
+}
+
+class ReturnStmtJSON extends StmtJSON {
+  return: ExprJSON;
+  constructor($return: ExprJSON) {
+    super();
+    this.return = $return;
+  }
+}
+
+function ret(returnValue: ExprJSON) {
+  return new ReturnStmtJSON(returnValue);
+}
+
+class PrintStmtJSON extends StmtJSON {
+  print: ExprJSON;
+  constructor(print: ExprJSON) {
+    super();
+    this.print = print;
+  }
+}
+
+function print(printValue: ExprJSON) {
+  return new PrintStmtJSON(printValue);
+}
+
+class FnStmtJSON extends StmtJSON {
+  fn: SymJSON;
+  params: SymJSON[];
+  body: StmtJSON[];
+  constructor(fn: SymJSON, params: SymJSON[], body: StmtJSON[]) {
+    super();
+    this.fn = fn;
+    this.params = params;
+    this.body = body;
+  }
+}
+
+function fnDef(fn: SymJSON, params: SymJSON[], body: StmtJSON[]) {
+  return new FnStmtJSON(fn, params, body);
+}
+
+class ExprStmtJSON extends StmtJSON {
+  expression: ExprJSON;
+  constructor(expression: ExprJSON) {
+    super();
+    this.expression = expression;
+  }
+}
+
+function expr(expression: ExprJSON) {
+  return new ExprStmtJSON(expression);
+}
+
+class BlockJSON extends StmtJSON {
+  block: StmtJSON[];
+  constructor(block: StmtJSON[]) {
+    super();
+    this.block = block;
+  }
+}
+
+function block(body: StmtJSON[]) {
+  return new BlockJSON(body);
+}
+
+abstract class ExprJSON extends MJSON {}
+
+class IntJSON extends ExprJSON {
+  int: number;
+  constructor(value: number) {
+    super();
+    this.int = value;
+  }
+}
+
+function int(value: number) {
+  return new IntJSON(value);
+}
+
+class FloatJSON extends ExprJSON {
+  float: number;
+  constructor(value: number) {
+    super();
+    this.float = value;
+  }
+}
+
+function float(value: number) {
+  return new FloatJSON(value);
+}
+
+class RationalJSON extends ExprJSON {
+  frac: [number, number];
+  constructor(n: number, d: number) {
+    super();
+    this.frac = [n, d];
+  }
+}
+
+function rat(n: number, d: number) {
+  return new RationalJSON(n, d);
+}
+
+class FnJSON extends ExprJSON {
+  fn: ExprJSON;
+  args: ExprJSON[];
+  constructor(op: ExprJSON, args: ExprJSON[]) {
+    super();
+    this.fn = op;
+    this.args = args;
+  }
+}
+
+class SymJSON extends ExprJSON {
+  sym: string;
+  constructor(sym: string) {
+    super();
+    this.sym = sym;
+  }
+}
+
+const sym = (symbol: string) => new SymJSON(symbol);
+
+function fn(op: ExprJSON | string, args: ExprJSON[]) {
+  return new FnJSON(typeof op === "string" ? sym(op) : op, args);
+}
+
+class StrJSON extends ExprJSON {
+  str: string;
+  constructor(str: string) {
+    super();
+    this.str = str;
+  }
+}
+
+function str(value: string) {
+  return new StrJSON(value);
+}
+
+class BoolJSON extends ExprJSON {
+  bool: boolean;
+  constructor(bool: boolean) {
+    super();
+    this.bool = bool;
+  }
+}
+
+function bool(value: boolean) {
+  return new BoolJSON(value);
+}
+
+class NilJSON extends ExprJSON {
+  nil: null;
+  constructor() {
+    super();
+    this.nil = null;
+  }
+}
+
+function nil() {
+  return new NilJSON();
+}
+
+class ConstJSON extends ExprJSON {
+  sym: string;
+  val: number;
+  constructor(sym: string, val: number) {
+    super();
+    this.sym = sym;
+    this.val = val;
+  }
+}
+
+function constant(sym: string, value: number) {
+  return new ConstJSON(sym, value);
+}
+
 // § Nodekind Enum
 enum nodekind {
   class_statement,
@@ -1719,7 +1954,7 @@ class ClassStmt extends Statement {
 }
 
 /** Returns a new class statement node. */
-function classStmt(name: Token, methods: FnStmt[]) {
+function $classStmt(name: Token, methods: FnStmt[]) {
   return new ClassStmt(name, methods);
 }
 
@@ -1748,7 +1983,7 @@ function isBlockStmt(node: ASTNode): node is BlockStmt {
 }
 
 /** Returns a new block statement node. */
-function blockStmt(statements: Statement[]) {
+function $blockStmt(statements: Statement[]) {
   return new BlockStmt(statements);
 }
 
@@ -1771,7 +2006,7 @@ class ExprStmt extends Statement {
 }
 
 /** Returns a new Expression Statement. */
-function exprStmt(expression: Expr) {
+function $exprStmt(expression: Expr) {
   return new ExprStmt(expression);
 }
 
@@ -1802,7 +2037,7 @@ class FnStmt extends Statement {
 }
 
 /** Returns a new function declaration statement. */
-function fnStmt(
+function $fnStmt(
   name: Token<token_type.symbol>,
   params: Sym[],
   body: Statement[]
@@ -1840,7 +2075,7 @@ class IfStmt extends Statement {
 }
 
 /** Returns a new if-then statement. */
-function ifStmt(
+function $ifStmt(
   keyword: Token,
   condition: Expr,
   then: Statement,
@@ -1870,7 +2105,7 @@ class PrintStmt extends Statement {
 }
 
 /** Returns a new print statement node. */
-function printStmt(keyword: Token, expression: Expr) {
+function $printStmt(keyword: Token, expression: Expr) {
   return new PrintStmt(keyword, expression);
 }
 
@@ -1895,7 +2130,7 @@ class ReturnStmt extends Statement {
 }
 
 /** Returns a new return statement node. */
-function returnStmt(keyword: Token, expression: Expr) {
+function $returnStmt(keyword: Token, expression: Expr) {
   return new ReturnStmt(keyword, expression);
 }
 
@@ -1921,12 +2156,12 @@ class VariableStmt extends Statement {
 }
 
 /** Returns a new 'var' statement node. */
-function varStmt(symbol: Sym, value: Expr) {
+function $var(symbol: Sym, value: Expr) {
   return new VariableStmt(symbol, value, true);
 }
 
 /** Returns a new 'let' statement node. */
-function letStmt(symbol: Sym, value: Expr) {
+function $let(symbol: Sym, value: Expr) {
   return new VariableStmt(symbol, value, false);
 }
 
@@ -1953,7 +2188,7 @@ class WhileStmt extends Statement {
 }
 
 /** Returns a new while statement node. */
-function whileStmt(keyword: Token, condition: Expr, body: Statement) {
+function $while(keyword: Token, condition: Expr, body: Statement) {
   return new WhileStmt(keyword, condition, body);
 }
 
@@ -1990,7 +2225,7 @@ class IndexExpr extends Expr {
 }
 
 /** Returns a new indexing expression node. */
-function indexExpr(list: Expr, index: Expr, op: Token) {
+function $index(list: Expr, index: Expr, op: Token) {
   return new IndexExpr(list, index, op);
 }
 
@@ -2015,7 +2250,7 @@ class AlgebraString extends Expr {
 }
 
 /** Returns a new algebra string node. */
-function algebraString(expression: Expr, op: Token) {
+function $algebraString(expression: Expr, op: Token) {
   return new AlgebraString(expression, op);
 }
 
@@ -2039,7 +2274,7 @@ class TupleExpr extends Expr {
 }
 
 /** Returns a new tuple expression. */
-function tupleExpr(elements: Expr[]) {
+function $tuple(elements: Expr[]) {
   return new TupleExpr(elements);
 }
 
@@ -2064,7 +2299,7 @@ class VectorExpr extends Expr {
 }
 
 /** Returns a new vector expression node. */
-function vectorExpr(op: Token, elements: Expr[]) {
+function $vector(op: Token, elements: Expr[]) {
   return new VectorExpr(op, elements);
 }
 
@@ -2097,7 +2332,7 @@ class MatrixExpr extends Expr {
 }
 
 /** Returns a new matrix expression. */
-function matrixExpr(vectors: VectorExpr[], rowCount: number, colCount: number) {
+function $matrix(vectors: VectorExpr[], rowCount: number, colCount: number) {
   return new MatrixExpr(vectors, rowCount, colCount);
 }
 
@@ -2120,7 +2355,7 @@ class Sym extends Expr {
 }
 
 /** Returns a new symbol node. */
-function sym(symbol: Token<token_type.symbol>) {
+function $sym(symbol: Token<token_type.symbol>) {
   return new Sym(symbol);
 }
 
@@ -2150,7 +2385,7 @@ class AssignmentExpr extends Expr {
 }
 
 /** Returns a new assignment expression node. */
-function assignmentExpr(symbol: Sym, value: Expr) {
+function $assign(symbol: Sym, value: Expr) {
   return new AssignmentExpr(symbol, value);
 }
 
@@ -2176,7 +2411,7 @@ class NativeCallExpr extends Expr {
 }
 
 /** Returns a new native call expression node. */
-function nativeCall(name: Token<token_type.native>, args: Expr[]) {
+function $nativeCall(name: Token<token_type.native>, args: Expr[]) {
   return new NativeCallExpr(name, args);
 }
 
@@ -2201,7 +2436,7 @@ class NegExpr extends Expr {
 }
 
 /** Returns a new positivation expression node. */
-function negExpr(op: Token<token_type.minus>, arg: Expr) {
+function $neg(op: Token<token_type.minus>, arg: Expr) {
   return new NegExpr(op, arg);
 }
 
@@ -2226,7 +2461,7 @@ class PosExpr extends Expr {
 }
 
 /** Returns a new positivization expression node. */
-function posExpr(op: Token<token_type.plus>, arg: Expr) {
+function $pos(op: Token<token_type.plus>, arg: Expr) {
   return new PosExpr(op, arg);
 }
 
@@ -2251,7 +2486,7 @@ class FactorialExpr extends Expr {
 }
 
 /** Returns a new factorial expression node. */
-function factorialExpr(op: Token<token_type.bang>, arg: Expr) {
+function $factorial(op: Token<token_type.bang>, arg: Expr) {
   return new FactorialExpr(op, arg);
 }
 
@@ -2276,7 +2511,7 @@ class NotExpr extends Expr {
 }
 
 /** Returns a new Not Expression node. */
-function notExpr(op: Token<token_type.not>, arg: Expr) {
+function $not(op: Token<token_type.not>, arg: Expr) {
   return new NotExpr(op, arg);
 }
 
@@ -2314,7 +2549,7 @@ class VectorBinex extends Expr {
 }
 
 /** Returns a new vector binary expression. */
-function vectorBinex(left: Expr, op: Token<VectorBinop>, right: Expr) {
+function $vectorBinex(left: Expr, op: Token<VectorBinop>, right: Expr) {
   return new VectorBinex(left, op, right);
 }
 
@@ -2356,7 +2591,7 @@ class AlgebraicBinex extends Expr {
 }
 
 /** Returns a new algebraic binary expression. */
-function algebraicBinex(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
+function $algebraicBinex(left: Expr, op: Token<AlgebraicOp>, right: Expr) {
   return new AlgebraicBinex(left, op, right);
 }
 
@@ -2385,7 +2620,7 @@ class CallExpr extends Expr {
 }
 
 /** Returns a new call expression. */
-function callExpr(callee: Expr, paren: Token, args: Expr[]) {
+function $call(callee: Expr, paren: Token, args: Expr[]) {
   return new CallExpr(callee, paren, args);
 }
 
@@ -2408,7 +2643,7 @@ class ParendExpr extends Expr {
 }
 
 /** Returns a new parenthesized expression node. */
-function parendExpr(innerExpression: Expr) {
+function $parend(innerExpression: Expr) {
   return new ParendExpr(innerExpression);
 }
 
@@ -2416,14 +2651,6 @@ function parendExpr(innerExpression: Expr) {
 function isParendExpr(node: ASTNode): node is ParendExpr {
   return node.kind() === nodekind.parend_expression;
 }
-
-type LiteralTokenType =
-  | NumberTokenType
-  | token_type.string
-  | token_type.boolean
-  | token_type.nil
-  | token_type.nan
-  | token_type.inf;
 
 /** An AST node corresponding to a string literal. */
 class StringLit extends Expr {
@@ -2444,7 +2671,7 @@ class StringLit extends Expr {
 }
 
 /** Returns a new string literal node. */
-function stringLit(value: string) {
+function $string(value: string) {
   return new StringLit(value);
 }
 
@@ -2467,7 +2694,7 @@ class Bool extends Expr {
 }
 
 /** Returns a new Boolean literal node. */
-function bool(value: boolean) {
+function $bool(value: boolean) {
   return new Bool(value);
 }
 
@@ -2490,7 +2717,7 @@ class Nil extends Expr {
 }
 
 /** Returns a new nil node. */
-function nil() {
+function $nil() {
   return new Nil();
 }
 
@@ -2513,7 +2740,7 @@ class Integer extends Expr {
 }
 
 /** Returns a new integer node. */
-function integer(value: number) {
+function $int(value: number) {
   return new Integer(value);
 }
 
@@ -2535,7 +2762,7 @@ class Float extends Expr {
 }
 
 /** Returns a new float node. */
-function float(value: number) {
+function $float(value: number) {
   return new Float(value);
 }
 
@@ -2557,7 +2784,7 @@ class BigInteger extends Expr {
 }
 
 /** Returns a new Big Integer node. */
-function bigInteger(value: bigint) {
+function $bigInteger(value: bigint) {
   return new BigInteger(value);
 }
 
@@ -2579,7 +2806,7 @@ class SciNum extends Expr {
 }
 
 /** Returns a new scientific number node. */
-function scinum(value: Scientific_Number) {
+function $scinum(value: Scientific_Number) {
   return new SciNum(value);
 }
 
@@ -2602,13 +2829,13 @@ class Frac extends Expr {
 }
 
 /* Returns a new fraction node. */
-function frac(value: Fraction) {
+function $frac(value: Fraction) {
   return new Frac(value);
 }
 
 /** Returns an empty statement. */
 function emptyStmt() {
-  return exprStmt(nil());
+  return $exprStmt($nil());
 }
 
 /** An AST node corresponding to a numeric constant expression. */
@@ -2632,7 +2859,7 @@ class NumConst extends Expr {
 }
 
 /** Returns a new numeric constant node. */
-function numConst(symbol: string, value: number) {
+function $numConst(symbol: string, value: number) {
   return new NumConst(symbol, value);
 }
 
@@ -2671,7 +2898,7 @@ class LogicalBinex extends Expr {
 }
 
 /** Returns a new logical binary expression node. */
-function logicalBinex(left: Expr, op: Token<BinaryLogicOp>, right: Expr) {
+function $logicalBinex(left: Expr, op: Token<BinaryLogicOp>, right: Expr) {
   return new LogicalBinex(left, op, right);
 }
 
@@ -2710,11 +2937,10 @@ class RelationExpr extends Expr {
 }
 
 /** Returns a new relation expression node. */
-function relationExpr(left: Expr, op: Token<RelationOp>, right: Expr) {
+function $relation(left: Expr, op: Token<RelationOp>, right: Expr) {
   return new RelationExpr(left, op, right);
 }
 
-// TODO - Implement Get Expression
 /** An AST node corresponding to a get expression. */
 class GetExpr extends Expr {
   accept<T>(visitor: Visitor<T>): T {
@@ -2736,7 +2962,7 @@ class GetExpr extends Expr {
 }
 
 /** Returns a new Get Expression node. */
-function getExpr(object: Expr, name: Token) {
+function $get(object: Expr, name: Token) {
   return new GetExpr(object, name);
 }
 
@@ -2770,7 +2996,7 @@ class StringConcatExpr extends Expr {
 }
 
 /* Returns a new string concatenation node. */
-function stringConcat(
+function $stringConcat(
   left: Expr,
   op: Token<token_type.ampersand>,
   right: Expr
@@ -2801,7 +3027,7 @@ class SetExpr extends Expr {
 }
 
 /** Returns a new set expression node. */
-function setExpr(object: Expr, name: Token, value: Expr) {
+function $set(object: Expr, name: Token, value: Expr) {
   return new SetExpr(object, name, value);
 }
 
@@ -2824,7 +3050,7 @@ class SuperExpr extends Expr {
 }
 
 /** Returns a new super expression node. */
-function superExpr(method: Token) {
+function $super(method: Token) {
   return new SuperExpr(method);
 }
 
@@ -2847,7 +3073,7 @@ class ThisExpr extends Expr {
 }
 
 /** Returns a new this-expression node. */
-function thisExpr(keyword: Token) {
+function $this(keyword: Token) {
   return new ThisExpr(keyword);
 }
 
@@ -2989,7 +3215,7 @@ type BPTable<T> = Record<token_type, ParsletEntry<T>>;
  */
 export function syntax(source: string) {
   /** Begin by initializing the state. */
-  const state = enstate<Expr, Statement>(nil(), emptyStmt()).init(source);
+  const state = enstate<Expr, Statement>($nil(), emptyStmt()).init(source);
 
   /**
    * The “blank” binding power. This particular binding power
@@ -3027,12 +3253,12 @@ export function syntax(source: string) {
           `Expected a ")" to close the tuple.`,
           state.$current.$line
         );
-      return state.newExpr(tupleExpr(elements));
+      return state.newExpr($tuple(elements));
     }
     if (!state.nextIs(token_type.right_paren)) {
       return state.error(`Expected a closing ")".`, state.$current.$line);
     }
-    return innerExpression.map((e) => parendExpr(e));
+    return innerExpression.map((e) => $parend(e));
   };
 
   /**
@@ -3081,7 +3307,7 @@ export function syntax(source: string) {
       }
       const right = r.unwrap();
       const star = token(token_type.star, "*", state.$current.$line);
-      return state.newExpr(algebraicBinex(left, star, right));
+      return state.newExpr($algebraicBinex(left, star, right));
     }
     let args: Expr[] = [];
     if (!state.check(token_type.right_paren)) {
@@ -3096,7 +3322,7 @@ export function syntax(source: string) {
     if (!paren.isType(token_type.right_paren)) {
       return state.error('Expected a closing ")', paren.$line);
     }
-    return state.newExpr(callExpr(callee, op, args));
+    return state.newExpr($call(callee, op, args));
   };
 
   /** Parses a vector expression */
@@ -3130,9 +3356,9 @@ export function syntax(source: string) {
           state.$current.$line
         );
       }
-      return state.newExpr(matrixExpr(vectors, rows, columns));
+      return state.newExpr($matrix(vectors, rows, columns));
     }
-    return state.newExpr(vectorExpr(prev, elements));
+    return state.newExpr($vector(prev, elements));
   };
 
   /** Parses an indexing expression. */
@@ -3143,7 +3369,7 @@ export function syntax(source: string) {
     if (!rbracket.isType(token_type.right_bracket)) {
       return state.error(`Expected a right bracket "]"`, rbracket.$line);
     }
-    return state.newExpr(indexExpr(lhs, index.unwrap(), op));
+    return state.newExpr($index(lhs, index.unwrap(), op));
   };
 
   /** Parses a get expression */
@@ -3152,7 +3378,7 @@ export function syntax(source: string) {
     if (!nxt.isType(token_type.symbol)) {
       return state.error("Expected a property name", nxt.$line);
     }
-    let exp = getExpr(lhs, nxt);
+    let exp = $get(lhs, nxt);
     if (state.nextIs(token_type.left_paren)) {
       const args: Expr[] = [];
       if (!state.check(token_type.right_paren)) {
@@ -3167,7 +3393,7 @@ export function syntax(source: string) {
       if (!rparen.isType(token_type.right_paren)) {
         return state.error(`Expected ")" after method arguments`, rparen.$line);
       }
-      return state.newExpr(callExpr(exp, op, args));
+      return state.newExpr($call(exp, op, args));
     }
     return state.newExpr(exp);
   };
@@ -3175,11 +3401,11 @@ export function syntax(source: string) {
   /** Parses an assignment expression */
   const assignment = (op: Token, node: Expr) => {
     if (isSymbol(node)) {
-      return expr().chain((n) => state.newExpr(assignmentExpr(node, n)));
+      return expr().chain((n) => state.newExpr($assign(node, n)));
     } else if (isGetExpr(node)) {
       const rhs = expr();
       if (rhs.isLeft()) return rhs;
-      return state.newExpr(setExpr(node.$object, node.$name, rhs.unwrap()));
+      return state.newExpr($set(node.$object, node.$name, rhs.unwrap()));
     } else {
       return state.error(
         `Expected a valid assignment target, but got ${node.toString()}`,
@@ -3191,7 +3417,7 @@ export function syntax(source: string) {
   /** Returns a factorial expression parser. */
   const factorialExpression = (op: Token, node: Expr) => {
     if (op.isType(token_type.bang)) {
-      return state.newExpr(factorialExpr(op, node));
+      return state.newExpr($factorial(op, node));
     }
     return state.error(`Expected "!" but got ${op.$lexeme}`, op.$line);
   };
@@ -3205,12 +3431,12 @@ export function syntax(source: string) {
         ? token_type.star
         : token_type.minus;
     if (isSymbol(node)) {
-      const right = algebraicBinex(
+      const right = $algebraicBinex(
         node,
         token(tt, operator, op.$line),
-        operator === "*" ? node : integer(1)
+        operator === "*" ? node : $int(1)
       );
-      return state.newExpr(assignmentExpr(node, right));
+      return state.newExpr($assign(node, right));
     } else {
       return state.error(
         `Expected the lefthand side of "${operator}${operator}" to be either a variable or property accessor, but got ${node.toString()}`,
@@ -3232,7 +3458,7 @@ export function syntax(source: string) {
   const vectorInfix: Parslet<Expr> = (op, left) => {
     const p = precof(op.$type);
     return expr(p).chain((right) =>
-      state.newExpr(vectorBinex(left, op as Token<VectorBinop>, right))
+      state.newExpr($vectorBinex(left, op as Token<VectorBinop>, right))
     );
   };
 
@@ -3240,7 +3466,7 @@ export function syntax(source: string) {
   const compare = (op: Token, lhs: Expr) => {
     const p = precof(op.$type);
     return expr(p).chain((rhs) => {
-      return state.newExpr(relationExpr(lhs, op as Token<RelationOp>, rhs));
+      return state.newExpr($relation(lhs, op as Token<RelationOp>, rhs));
     });
   };
 
@@ -3251,9 +3477,9 @@ export function syntax(source: string) {
     if (a.isLeft()) return a;
     const arg = a.unwrap();
     if (op.isType(token_type.minus)) {
-      return state.newExpr(negExpr(op, arg));
+      return state.newExpr($neg(op, arg));
     } else if (op.isType(token_type.plus)) {
-      return state.newExpr(posExpr(op, arg));
+      return state.newExpr($pos(op, arg));
     } else {
       return state.error(`Unknown prefix operator "${op.$lexeme}"`, op.$line);
     }
@@ -3269,8 +3495,8 @@ export function syntax(source: string) {
         const r = expr();
         if (r.isLeft()) return r;
         const rhs = r.unwrap();
-        const value = algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs);
-        return state.newExpr(assignmentExpr(name, value));
+        const value = $algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs);
+        return state.newExpr($assign(name, value));
       } else {
         return state.error(
           `Invalid lefthand side of assignment. Expected a variable to the left of "${
@@ -3285,14 +3511,14 @@ export function syntax(source: string) {
     const RHS = expr(p);
     if (RHS.isLeft()) return RHS;
     const rhs = RHS.unwrap();
-    return state.newExpr(algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs));
+    return state.newExpr($algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs));
   };
 
   /* Parses a logical infix expression. */
   const logicInfix = (op: Token, lhs: Expr) => {
     const p = precof(op.$type);
     return expr(p).chain((rhs) => {
-      return state.newExpr(logicalBinex(lhs, op as Token<BinaryLogicOp>, rhs));
+      return state.newExpr($logicalBinex(lhs, op as Token<BinaryLogicOp>, rhs));
     });
   };
 
@@ -3300,14 +3526,14 @@ export function syntax(source: string) {
   const logicNot = (op: Token) => {
     const p = precof(op.$type);
     return expr(p).chain((arg) =>
-      state.newExpr(notExpr(op as Token<token_type.not>, arg))
+      state.newExpr($not(op as Token<token_type.not>, arg))
     );
   };
 
   /* Parses a symbol. */
   const varname: Parslet<Expr> = (op) => {
     if (op.isType(token_type.symbol)) {
-      const out = sym(op);
+      const out = $sym(op);
       return state.newExpr(out);
     } else {
       return state.error(`Unexpected variable "${op.$lexeme}"`, op.$line);
@@ -3317,9 +3543,9 @@ export function syntax(source: string) {
   /* Parses an implicit multiplication. */
   const impMul: Parslet<Expr> = (op, left) => {
     if (op.isType(token_type.symbol)) {
-      const right = sym(op);
+      const right = $sym(op);
       const star = token(token_type.star, "*", op.$line);
-      return state.newExpr(algebraicBinex(left, star, right));
+      return state.newExpr($algebraicBinex(left, star, right));
     } else {
       return state.error(
         `Expected a symbol for implicit multiplication, but got "${op.$lexeme}"`,
@@ -3329,13 +3555,12 @@ export function syntax(source: string) {
   };
 
   /* Parses a string literal. */
-  const stringLiteral: Parslet<Expr> = (t) =>
-    state.newExpr(stringLit(t.$lexeme));
+  const stringLiteral: Parslet<Expr> = (t) => state.newExpr($string(t.$lexeme));
 
   /* Parses a boolean literal. */
   const boolLiteral: Parslet<Expr> = (op) => {
     if (op.isType(token_type.boolean) && typeof op.$literal === "boolean") {
-      return state.newExpr(bool(op.$literal));
+      return state.newExpr($bool(op.$literal));
     } else {
       return state.error(`Unexpected boolean literal`, op.$line);
     }
@@ -3347,25 +3572,25 @@ export function syntax(source: string) {
     const erm = `Unexpected constant "${op.$lexeme}"`;
     switch (type) {
       case token_type.nan:
-        return state.newExpr(numConst("NaN", NaN));
+        return state.newExpr($numConst("NaN", NaN));
       case token_type.inf:
-        return state.newExpr(numConst("Inf", Infinity));
+        return state.newExpr($numConst("Inf", Infinity));
       case token_type.numeric_constant: {
         switch (op.$lexeme as NativeConstants) {
           case "e":
-            return state.newExpr(numConst("e", Math.E));
+            return state.newExpr($numConst("e", Math.E));
           case "pi":
-            return state.newExpr(numConst("pi", Math.PI));
+            return state.newExpr($numConst("pi", Math.PI));
           case "ln2":
-            return state.newExpr(numConst("ln2", Math.LN2));
+            return state.newExpr($numConst("ln2", Math.LN2));
           case "ln10":
-            return state.newExpr(numConst("ln10", Math.LN10));
+            return state.newExpr($numConst("ln10", Math.LN10));
           case "log10e":
-            return state.newExpr(numConst("log10e", Math.LOG10E));
+            return state.newExpr($numConst("log10e", Math.LOG10E));
           case "log2e":
-            return state.newExpr(numConst("log2e", Math.LOG2E));
+            return state.newExpr($numConst("log2e", Math.LOG2E));
           case "sqrt2":
-            return state.newExpr(numConst("sqrt2", Math.SQRT2));
+            return state.newExpr($numConst("sqrt2", Math.SQRT2));
         }
       }
       default:
@@ -3377,8 +3602,8 @@ export function syntax(source: string) {
   const number = (t: Token) => {
     if (t.isNumber()) {
       const out = t.isType(token_type.integer)
-        ? state.newExpr(integer(t.$literal))
-        : state.newExpr(float(t.$literal));
+        ? state.newExpr($int(t.$literal))
+        : state.newExpr($float(t.$literal));
       const peek = state.$peek;
       if (
         peek.isType(token_type.left_paren) ||
@@ -3390,7 +3615,7 @@ export function syntax(source: string) {
         const right = r.unwrap();
         const star = token(token_type.star, "*", peek.$line);
         const left = out.unwrap();
-        return state.newExpr(parendExpr(algebraicBinex(left, star, right)));
+        return state.newExpr($parend($algebraicBinex(left, star, right)));
       }
       return out;
     } else {
@@ -3419,7 +3644,7 @@ export function syntax(source: string) {
         state.$current.$line
       );
     }
-    return state.newExpr(nativeCall(op as Token<token_type.native>, args));
+    return state.newExpr($nativeCall(op as Token<token_type.native>, args));
   };
 
   /* Parses a string concatenation expression. */
@@ -3427,7 +3652,7 @@ export function syntax(source: string) {
     const p = precof(op.$type);
     return expr(p).chain((right) => {
       return state.newExpr(
-        stringConcat(left, op as Token<token_type.ampersand>, right)
+        $stringConcat(left, op as Token<token_type.ampersand>, right)
       );
     });
   };
@@ -3435,7 +3660,7 @@ export function syntax(source: string) {
   /** Parses a fraction literal. */
   const fract = (op: Token) => {
     if (op.isType(token_type.fraction) && op.$literal instanceof Fraction) {
-      return state.newExpr(frac(op.$literal));
+      return state.newExpr($frac(op.$literal));
     } else {
       return state.error(`Unexpected fraction`, op.$line);
     }
@@ -3452,14 +3677,14 @@ export function syntax(source: string) {
       const result = syntax(tkns).parsex();
       if (result.isLeft()) return result;
       const expression = result.unwrap();
-      return state.newExpr(algebraString(expression, op));
+      return state.newExpr($algebraString(expression, op));
     } else {
       return state.error(`Unexpected algebraic string`, op.$line);
     }
   };
 
   /* Parses a this expression. */
-  const thisExpression = (t: Token) => state.newExpr(thisExpr(t));
+  const thisExpression = (t: Token) => state.newExpr($this(t));
 
   /**
    * The rules table comprises mappings from every
@@ -3586,7 +3811,7 @@ export function syntax(source: string) {
   const expr = (minbp: number = bp.lowest): Either<Err, Expr> => {
     let token = state.next();
     const pre = prefixRule(token.$type);
-    let lhs = pre(token, nil());
+    let lhs = pre(token, $nil());
     if (lhs.isLeft()) return lhs;
     while (minbp < precof(state.$peek.$type)) {
       if (state.atEnd()) break;
@@ -3605,7 +3830,7 @@ export function syntax(source: string) {
     if (out.isLeft()) return out;
     const expression = out.unwrap();
     if (state.nextIs(token_type.semicolon) || state.implicitSemicolonOK()) {
-      return state.newStmt(exprStmt(expression));
+      return state.newStmt($exprStmt(expression));
     } else {
       return state.error(
         `Expected ";" to end the statement`,
@@ -3614,8 +3839,280 @@ export function syntax(source: string) {
     }
   };
 
-  const STATEMENT = () => {
-    return EXPRESSION();
+  const VAR = (prev: token_type.let | token_type.var) => {
+    const name = state.next();
+    if (!name.isType(token_type.symbol)) {
+      return state.error(`Expected a valid identifier`, name.$line);
+    }
+    if (!state.nextIs(token_type.equal)) {
+      return state.error(
+        `Expected an assignment operator`,
+        state.$current.$line
+      );
+    }
+    const init = EXPRESSION();
+    if (init.isLeft()) return init;
+    const value = init.unwrap();
+    return state.newStmt(
+      (prev === token_type.let ? $let : $var)($sym(name), value.$expression)
+    );
+  };
+
+  const BLOCK = () => {
+    const statements: Statement[] = [];
+    while (!state.atEnd() && !state.check(token_type.right_brace)) {
+      const stmt = STATEMENT();
+      if (stmt.isLeft()) return stmt;
+      statements.push(stmt.unwrap());
+    }
+    if (!state.nextIs(token_type.right_brace)) {
+      return state.error(
+        `Expected a "}" to close the block`,
+        state.$current.$line
+      );
+    }
+    return state.newStmt($blockStmt(statements));
+  };
+
+  const FN = (): Either<Err, FnStmt> => {
+    const name = state.next();
+    if (!name.isType(token_type.symbol)) {
+      return state.error(
+        `Expected a valid identifier for the function's name, but got ${name.$lexeme}`,
+        name.$line
+      );
+    }
+    if (!state.nextIs(token_type.left_paren)) {
+      return state.error(
+        `Expected a "(" to begin the parameter list`,
+        state.$current.$line
+      );
+    }
+    const params: Token<token_type.symbol>[] = [];
+    if (!state.$peek.isType(token_type.right_paren)) {
+      do {
+        const expression = state.next();
+        if (!expression.isType(token_type.symbol)) {
+          return state.error(
+            `Expected a valid identifier as a parameter, but got "${expression.$lexeme}"`,
+            expression.$line
+          );
+        }
+        params.push(expression);
+      } while (state.nextIs(token_type.comma));
+    }
+    if (!state.nextIs(token_type.right_paren)) {
+      return state.error(
+        `Expected a ")" to close the parameter list`,
+        state.$current.$line
+      );
+    }
+    if (state.nextIs(token_type.equal)) {
+      const body = EXPRESSION();
+      return body.chain((b) =>
+        state.newStmt(
+          $fnStmt(
+            name,
+            params.map((s) => $sym(s)),
+            [b]
+          )
+        )
+      );
+    }
+    if (!state.nextIs(token_type.left_brace)) {
+      return state.error(
+        `Expected a "{" to open the function's body`,
+        state.$current.$line
+      );
+    }
+    const body = BLOCK();
+    return body.chain((b) =>
+      state.newStmt(
+        $fnStmt(
+          name,
+          params.map((p) => $sym(p)),
+          b.$statements
+        )
+      )
+    );
+  };
+
+  const IF = () => {
+    const keyword = state.$current;
+    const c = expr();
+    if (c.isLeft()) return c;
+    const condition = c.unwrap();
+    if (!state.nextIs(token_type.left_brace)) {
+      return state.error(
+        `Expected a left brace "{" to begin the consequent block`,
+        state.$current.$line
+      );
+    }
+    const consequent = BLOCK();
+    if (consequent.isLeft()) return consequent;
+    const thenBranch = consequent.unwrap();
+    let elseBranch: Statement = $returnStmt(state.$current, $nil());
+    if (state.nextIs(token_type.else)) {
+      const _else = STATEMENT();
+      if (_else.isLeft()) return _else;
+      elseBranch = _else.unwrap();
+    }
+    return state.newStmt($ifStmt(keyword, condition, thenBranch, elseBranch));
+  };
+
+  const RETURN = () => {
+    const c = state.$current;
+    const out = EXPRESSION();
+    return out.chain((e) => state.newStmt($returnStmt(c, e.$expression)));
+  };
+
+  const WHILE = () => {
+    const current = state.$current;
+    const loopCondition = expr();
+    if (loopCondition.isLeft()) return loopCondition;
+    if (!state.nextIs(token_type.left_brace)) {
+      return state.error(
+        `Expected a block after the condition`,
+        state.$current.$line
+      );
+    }
+    const body = BLOCK();
+    if (body.isLeft()) return body;
+    return body.chain((loopBody) =>
+      state.newStmt($while(current, loopCondition.unwrap(), loopBody))
+    );
+  };
+
+  const FOR = () => {
+    const current = state.$current;
+    const preclauseToken = state.next();
+    if (!preclauseToken.isType(token_type.left_paren)) {
+      return state.error(
+        `Expected a "(" after "for" to begin the loop's clauses, but got "${preclauseToken.$lexeme}"`,
+        preclauseToken.$line
+      );
+    }
+    let init: Statement | null = null;
+    if (state.nextIs(token_type.semicolon)) {
+      init = init;
+    } else if (state.nextIs(token_type.var)) {
+      const initializer = VAR(token_type.var);
+      if (initializer.isLeft()) return initializer;
+      init = initializer.unwrap();
+    } else {
+      const exp = EXPRESSION();
+      if (exp.isLeft()) return exp;
+      init = exp.unwrap();
+    }
+    let condition: Expr | null = null;
+    if (!state.check(token_type.semicolon)) {
+      const c = expr();
+      if (c.isLeft()) return c;
+      condition = c.unwrap();
+    }
+    const postConditionToken = state.next();
+    if (!postConditionToken.isType(token_type.semicolon)) {
+      return state.error(
+        `Expected a ";" after the for-loop condition, but got "${postConditionToken.$lexeme}"`,
+        postConditionToken.$line
+      );
+    }
+    let ticker: Expr | null = null;
+    if (!state.check(token_type.right_paren)) {
+      const _ticker = expr();
+      if (_ticker.isLeft()) return _ticker;
+      ticker = _ticker.unwrap();
+    }
+    const postIncrementToken = state.next();
+    if (!postIncrementToken.isType(token_type.right_paren)) {
+      return state.error(
+        `Expected a ")" to close the for-loop's clauses, but got "${postIncrementToken.$lexeme}"`,
+        postConditionToken.$line
+      );
+    }
+    const b = STATEMENT();
+    if (b.isLeft()) return b;
+    const bodyLine = state.$current.$line;
+    let body: Statement = b.unwrap();
+    if (ticker !== null) {
+      if (isBlockStmt(body)) {
+        body.$statements.push($exprStmt(ticker));
+      } else {
+        body = $blockStmt([body, $exprStmt(ticker)]);
+      }
+    }
+    let loopCondition: Expr = $bool(true);
+    if (condition !== null) {
+      loopCondition = condition;
+    }
+    body = $while(current, loopCondition, body);
+    if (init !== null) {
+      body = $blockStmt([init, body]);
+    }
+    return state.newStmt(body);
+  };
+
+  const CLASS = () => {
+    const name = state.next();
+    if (!name.isType(token_type.symbol)) {
+      return state.error(
+        `Expected a valid identifier after "class" but got "${name.$lexeme}"`,
+        name.$line
+      );
+    }
+    const lbrace = state.next();
+    if (!lbrace.isType(token_type.left_brace)) {
+      return state.error(
+        `Expected a "{" to begin the body of class "${name.$lexeme}", but got "${lbrace.$lexeme}".`,
+        lbrace.$line
+      );
+    }
+    const methods: FnStmt[] = [];
+    while (!state.check(token_type.left_brace) && !state.atEnd()) {
+      const f = FN();
+      if (f.isLeft()) return f;
+      methods.push(f.unwrap());
+    }
+    const postMethodsToken = state.next();
+    if (!postMethodsToken.isType(token_type.right_brace)) {
+      return state.error(
+        `Expected a "}" after the body of class "${name.$lexeme}", but got "${postMethodsToken.$lexeme}".`,
+        postMethodsToken.$line
+      );
+    }
+    return state.newStmt($classStmt(name, methods));
+  };
+
+  const PRINT = () => {
+    const current = state.$current;
+    const arg = EXPRESSION();
+    return arg.map((x) => $printStmt(current, x.$expression));
+  };
+
+  const STATEMENT = (): Either<Err, Statement> => {
+    if (state.nextIs(token_type.var)) {
+      return VAR(token_type.var);
+    } else if (state.nextIs(token_type.let)) {
+      return VAR(token_type.let);
+    } else if (state.nextIs(token_type.fn)) {
+      return FN();
+    } else if (state.nextIs(token_type.left_brace)) {
+      return BLOCK();
+    } else if (state.nextIs(token_type.if)) {
+      return IF();
+    } else if (state.nextIs(token_type.return)) {
+      return RETURN();
+    } else if (state.nextIs(token_type.while)) {
+      return WHILE();
+    } else if (state.nextIs(token_type.for)) {
+      return FOR();
+    } else if (state.nextIs(token_type.class)) {
+      return CLASS();
+    } else if (state.nextIs(token_type.print)) {
+      return PRINT();
+    } else {
+      return EXPRESSION();
+    }
   };
 
   return {

@@ -12118,27 +12118,27 @@ function syntax(source: string) {
    */
   const STMT = (): Either<Err, Statement> => {
     if (state.nextIs(tt.var)) {
-      return VAR(tt.var);
+      return VAR(tt.var); // done
     } else if (state.nextIs(tt.let)) {
-      return VAR(tt.let);
+      return VAR(tt.let); // done
     } else if (state.nextIs(tt.fn)) {
-      return FN();
+      return FN(); // done
     } else if (state.nextIs(tt.lbrace)) {
-      return BLOCK();
+      return BLOCK(); // done
     } else if (state.nextIs(tt.if)) {
-      return IF();
+      return IF(); // done
     } else if (state.nextIs(tt.return)) {
-      return RETURN();
+      return RETURN(); // done
     } else if (state.nextIs(tt.while)) {
-      return WHILE();
+      return WHILE(); // done
     } else if (state.nextIs(tt.for)) {
-      return FOR();
+      return FOR(); // done
     } else if (state.nextIs(tt.print)) {
-      return PRINT();
+      return PRINT(); // done
     } else if (state.nextIs(tt.class)) {
-      return CLASS();
+      return CLASS(); // done
     } else {
-      return EXPRESSION();
+      return EXPRESSION(); // done
     }
   };
 
