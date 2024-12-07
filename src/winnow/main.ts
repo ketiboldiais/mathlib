@@ -592,6 +592,9 @@ class Scientific_Number {
     this.$m = m;
     this.$n = Math.floor(n);
   }
+  toString() {
+    return `${this.$m}E{${this.$n}}`
+  }
 }
 
 /**
@@ -600,7 +603,7 @@ class Scientific_Number {
  * @param n The exponent (an integer) in `m x 10^n`.
  * @returns A new scientific number (m x 10^n).
  */
-function scinum(m: number, n: number) {
+function sci(m: number, n: number) {
   return new Scientific_Number(m, Math.floor(n));
 }
 
@@ -1276,7 +1279,7 @@ export function lexical(code: string) {
         const [a, b] = n.split("E");
         const base = Number.parseFloat(a);
         const exponent = Number.parseInt(b);
-        return tkn(type).withLiteral(scinum(base, exponent));
+        return tkn(type).withLiteral(sci(base, exponent));
       }
     }
     return errorToken(`Unrecognized number: "${n}".`);
@@ -1610,6 +1613,9 @@ enum nodekind {
   string,
   bool,
   integer,
+  big_integer,
+  scientific_number,
+  float,
   nil,
 }
 
@@ -1649,6 +1655,9 @@ interface Visitor<T> {
   bool(node: Bool): T;
   nil(node: Nil): T;
   integer(node: Integer): T;
+  float(node: Float): T;
+  bigInteger(node: BigInteger): T;
+  sciNum(node: SciNum): T;
   literal(node: Literal): T;
   numConst(node: NumConst): T;
 }
@@ -2458,6 +2467,72 @@ class Integer extends Expr {
 /** Returns a new integer node. */
 function integer(value: number) {
   return new Integer(value);
+}
+
+class Float extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.float(this);
+  }
+  kind(): nodekind {
+    return nodekind.float;
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  $value: number;
+  constructor(value:number) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new float node. */
+function float(value: number) {
+  return new Float(value);
+}
+
+class BigInteger extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.bigInteger(this);
+  }
+  kind(): nodekind {
+    return nodekind.big_integer;
+  }
+  toString(): string {
+    return `${this.$value}`;
+  }
+  $value: bigint;
+  constructor(value: bigint) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new Big Integer node. */
+function bigInteger(value: bigint) {
+  return new BigInteger(value);
+}
+
+class SciNum extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.sciNum(this);
+  }
+  kind(): nodekind {
+    return nodekind.scientific_number;
+  }
+  toString(): string {
+    return this.$value.toString();
+  }
+  $value: Scientific_Number;
+  constructor(value: Scientific_Number) {
+    super();
+    this.$value = value;
+  }
+}
+
+/** Returns a new scientific number node. */
+function scinum(value: Scientific_Number) {
+  return new SciNum(value);
 }
 
 /** An AST node corresponding to a literal expression. */
