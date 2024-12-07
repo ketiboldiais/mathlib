@@ -902,6 +902,15 @@ type NativePolyAry = "max" | "min";
 
 type NativeFn = NativeUnary | NativePolyAry;
 
+type NativeConstants =
+  | "e"
+  | "pi"
+  | "ln2"
+  | "ln10"
+  | "log10e"
+  | "log2e"
+  | "sqrt2";
+
 // § Lexical
 
 export function lexical(code: string) {
@@ -1111,7 +1120,7 @@ export function lexical(code: string) {
     nand: () => tkn(token_type.nand),
   };
 
-  const numConsts: Record<string, () => Token> = {
+  const numConsts: Record<NativeConstants, () => Token> = {
     e: () => tkn(token_type.numeric_constant).withLiteral(Math.E),
     pi: () => tkn(token_type.numeric_constant).withLiteral(Math.PI),
     ln10: () => tkn(token_type.numeric_constant).withLiteral(Math.LN10),
@@ -1167,8 +1176,8 @@ export function lexical(code: string) {
       return tkn(token_type.native);
     } else if (dictionary[word]) {
       return dictionary[word]();
-    } else if (numConsts[word]) {
-      return numConsts[word]();
+    } else if (numConsts[word as NativeConstants]) {
+      return numConsts[word as NativeConstants]();
     } else {
       return tkn(token_type.symbol);
     }
@@ -1581,6 +1590,7 @@ enum nodekind {
   block_statement,
   expression_statement,
   negation_expression,
+  positivization_expression,
   function_declaration,
   variable_declaration,
   if_statement,
@@ -1639,6 +1649,7 @@ interface Visitor<T> {
   assignmentExpr(node: AssignmentExpr): T;
   nativeCallExpr(node: NativeCallExpr): T;
   negExpr(node: NegExpr): T;
+  posExpr(node: PosExpr): T;
   factorialExpr(node: FactorialExpr): T;
   notExpr(node: NotExpr): T;
   vectorBinex(node: VectorBinex): T;
@@ -2187,9 +2198,34 @@ class NegExpr extends Expr {
   }
 }
 
-/** Returns a new negation expression node. */
+/** Returns a new positivation expression node. */
 function negExpr(op: Token<token_type.minus>, arg: Expr) {
   return new NegExpr(op, arg);
+}
+
+/** An AST node corresponding to algebraic positivization. */
+class PosExpr extends Expr {
+  accept<T>(visitor: Visitor<T>): T {
+    return visitor.posExpr(this);
+  }
+  kind(): nodekind {
+    return nodekind.positivization_expression;
+  }
+  toString(): string {
+    return `+${this.$arg.toString()}`;
+  }
+  $op: Token<token_type.plus>;
+  $arg: Expr;
+  constructor(op: Token<token_type.plus>, arg: Expr) {
+    super();
+    this.$op = op;
+    this.$arg = arg;
+  }
+}
+
+/** Returns a new positivization expression node. */
+function posExpr(op: Token<token_type.plus>, arg: Expr) {
+  return new PosExpr(op, arg);
 }
 
 /** A node corresponding to a factorial expression. */
@@ -2582,20 +2618,20 @@ class NumConst extends Expr {
     return nodekind.numeric_constant;
   }
   toString(): string {
-    return this.$sym.$lexeme;
+    return this.$sym;
   }
-  $sym: Token<token_type.numeric_constant>;
+  $sym: string;
   $value: number;
-  constructor(sym: Token<token_type.numeric_constant, number>) {
+  constructor(sym: string, value: number) {
     super();
     this.$sym = sym;
-    this.$value = sym.$literal;
+    this.$value = value;
   }
 }
 
 /** Returns a new numeric constant node. */
-function numConst(symbol: Token<token_type.numeric_constant, number>) {
-  return new NumConst(symbol);
+function numConst(symbol: string, value: number) {
+  return new NumConst(symbol, value);
 }
 
 /** A token type corresponding to a binary logic operator. */
@@ -2896,6 +2932,7 @@ enum bp {
   quotient,
   imul,
   power,
+  dot_product,
   postfix,
   call,
 }
@@ -3119,13 +3156,18 @@ function syntax(source: string) {
   };
 
   /** Returns an increment or decrement parser. */
-  const incdec = (operator: "+" | "-") => (op: Token, node: Expr) => {
-    const tt = operator === "+" ? token_type.plus : token_type.minus;
+  const incdec = (operator: "+" | "-" | "*") => (op: Token, node: Expr) => {
+    const tt =
+      operator === "+"
+        ? token_type.plus
+        : operator === "*"
+        ? token_type.star
+        : token_type.minus;
     if (isSymbol(node)) {
       const right = algebraicBinex(
         node,
         token(tt, operator, op.$line),
-        integer(1)
+        operator === "*" ? node : integer(1)
       );
       return state.newExpr(assignmentExpr(node, right));
     } else {
@@ -3142,11 +3184,199 @@ function syntax(source: string) {
   /** Parses an increment expression. */
   const incrementExpression = incdec("+");
 
+  /** Parses an increment expression. */
+  const squareExpression = incdec("+");
+
+  /** Parses a vector infix expression. */
   const vectorInfix: Parslet<Expr> = (op, left) => {
     const p = precof(op.$type);
     return expr(p).chain((right) =>
       state.newExpr(vectorBinex(left, op as Token<VectorBinop>, right))
     );
+  };
+
+  /* Parses a comparison expression. */
+  const compare = (op: Token, lhs: Expr) => {
+    const p = precof(op.$type);
+    return expr(p).chain((rhs) => {
+      return state.newExpr(relationExpr(lhs, op as Token<RelationOp>, rhs));
+    });
+  };
+
+  const prefix: Parslet<Expr> = (op) => {
+    const p = precof(op.$type);
+    const a = expr(p);
+    if (a.isLeft()) return a;
+    const arg = a.unwrap();
+    if (op.isType(token_type.minus)) {
+      return state.newExpr(negExpr(op, arg));
+    } else if (op.isType(token_type.plus)) {
+      return state.newExpr(posExpr(op, arg));
+    } else {
+      return state.error(`Unknown prefix operator "${op.$lexeme}"`, op.$line);
+    }
+  };
+
+  /* Parses an infix expression. */
+  const infix = (op: Token, lhs: Expr) => {
+    // Detour to handling complex assignments.
+    // E.g., x += 1
+    if (state.nextIs(token_type.equal)) {
+      if (isSymbol(lhs)) {
+        const name = lhs;
+        const r = expr();
+        if (r.isLeft()) return r;
+        const rhs = r.unwrap();
+        const value = algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs);
+        return state.newExpr(assignmentExpr(name, value));
+      } else {
+        return state.error(
+          `Invalid lefthand side of assignment. Expected a variable to the left of "${
+            op.$lexeme
+          }", but got "${lhs.toString()}"`,
+          op.$line
+        );
+      }
+    }
+    // actual handling of infix expressions
+    const p = precof(op.$type);
+    const RHS = expr(p);
+    if (RHS.isLeft()) return RHS;
+    const rhs = RHS.unwrap();
+    return state.newExpr(algebraicBinex(lhs, op as Token<AlgebraicOp>, rhs));
+  };
+
+  /* Parses a logical infix expression. */
+  const logicInfix = (op: Token, lhs: Expr) => {
+    const p = precof(op.$type);
+    return expr(p).chain((rhs) => {
+      return state.newExpr(logicalBinex(lhs, op as Token<BinaryLogicOp>, rhs));
+    });
+  };
+
+  /* Parses a logical not expression. */
+  const logicNot = (op: Token) => {
+    const p = precof(op.$type);
+    return expr(p).chain((arg) =>
+      state.newExpr(notExpr(op as Token<token_type.not>, arg))
+    );
+  };
+
+  /* Parses a symbol. */
+  const varname: Parslet<Expr> = (op) => {
+    if (op.isType(token_type.symbol)) {
+      const out = sym(op);
+      return state.newExpr(out);
+    } else {
+      return state.error(`Unexpected variable "${op.$lexeme}"`, op.$line);
+    }
+  };
+
+  /* Parses an implicit multiplication. */
+  const impMul: Parslet<Expr> = (op, left) => {
+    if (op.isType(token_type.symbol)) {
+      const right = sym(op);
+      const star = token(token_type.star, "*", op.$line);
+      return state.newExpr(algebraicBinex(left, star, right));
+    } else {
+      return state.error(
+        `Expected a symbol for implicit multiplication, but got "${op.$lexeme}"`,
+        op.$line
+      );
+    }
+  };
+
+  /* Parses a string literal. */
+  const stringLiteral: Parslet<Expr> = (t) =>
+    state.newExpr(stringLit(t.$lexeme));
+
+  /* Parses a boolean literal. */
+  const boolLiteral: Parslet<Expr> = (op) => {
+    if (op.isType(token_type.boolean) && typeof op.$literal === "boolean") {
+      return state.newExpr(bool(op.$literal));
+    } else {
+      return state.error(`Unexpected boolean literal`, op.$line);
+    }
+  };
+
+  const constant = (op: Token) => {
+    const type = op.$type;
+    const erm = `Unexpected constant "${op.$lexeme}"`;
+    switch (type) {
+      case token_type.nan:
+        return state.newExpr(numConst("NaN", NaN));
+      case token_type.inf:
+        return state.newExpr(numConst("Inf", Infinity));
+      case token_type.numeric_constant: {
+        switch (op.$lexeme as NativeConstants) {
+          case "e":
+            return state.newExpr(numConst("e", Math.E));
+          case "pi":
+            return state.newExpr(numConst("pi", Math.PI));
+          case "ln2":
+            return state.newExpr(numConst("ln2", Math.LN2));
+          case "ln10":
+            return state.newExpr(numConst("ln10", Math.LN10));
+          case "log10e":
+            return state.newExpr(numConst("log10e", Math.LOG10E));
+          case "log2e":
+            return state.newExpr(numConst("log2e", Math.LOG2E));
+          case "sqrt2":
+            return state.newExpr(numConst("sqrt2", Math.SQRT2));
+        }
+      }
+      default:
+        return state.error(erm, op.$line);
+    }
+  };
+
+  /* Parses a number */
+  const number = (t: Token) => {
+    if (t.isNumber()) {
+      const out = t.isType(token_type.integer)
+        ? state.newExpr(integer(t.$literal))
+        : state.newExpr(float(t.$literal));
+      const peek = state.$peek;
+      if (
+        peek.isType(token_type.left_paren) ||
+        peek.isType(token_type.native) ||
+        peek.isType(token_type.symbol)
+      ) {
+        const r = expr(bp.imul);
+        if (r.isLeft()) return r;
+        const right = r.unwrap();
+        const star = token(token_type.star, "*", peek.$line);
+        const left = out.unwrap();
+        return state.newExpr(parendExpr(algebraicBinex(left, star, right)));
+      }
+      return out;
+    } else {
+      return state.error(`Expected a number, but got "${t.$lexeme}"`, t.$line);
+    }
+  };
+
+  /* Parses a native call expression. */
+  const ncall = (op: Token) => {
+    const lex = op.$lexeme;
+    if (!state.nextIs(token_type.left_paren)) {
+      return state.error(`Expected a "(" to open the argument list`, op.$line);
+    }
+    let args: Expr[] = [];
+    if (!state.check(token_type.right_paren)) {
+      const arglist = commaSepList(
+        (e): e is Expr => e instanceof Expr,
+        `Expected an expression`
+      );
+      if (arglist.isLeft()) return arglist;
+      args = arglist.unwrap();
+    }
+    if (!state.nextIs(token_type.right_paren)) {
+      return state.error(
+        `Expected ")" to close the argument list`,
+        state.$current.$line
+      );
+    }
+    return state.newExpr(nativeCall(op as Token<token_type.native>, args));
   };
 
   /**
@@ -3170,54 +3400,72 @@ function syntax(source: string) {
     [token_type.colon]: [___, ___, ___o],
     [token_type.dot]: [___, getExpression, bp.call],
     [token_type.comma]: [___, ___, ___o],
-    [token_type.plus]: [___, ___, ___o],
-    [token_type.minus]: [___, ___, ___o],
-    [token_type.star]: [___, ___, ___o],
-    [token_type.slash]: [___, ___, ___o],
-    [token_type.caret]: [___, ___, ___o],
-    [token_type.percent]: [___, ___, ___o],
+    // algebraic expressions
+    [token_type.plus]: [prefix, infix, bp.sum],
+    [token_type.minus]: [prefix, infix, bp.difference],
+    [token_type.star]: [___, infix, bp.product],
+    [token_type.slash]: [___, infix, bp.quotient],
+    [token_type.caret]: [___, infix, bp.power],
+    [token_type.percent]: [___, infix, bp.quotient],
+    [token_type.rem]: [___, infix, bp.quotient],
+    [token_type.mod]: [___, infix, bp.quotient],
+    [token_type.div]: [___, infix, bp.quotient],
+
     [token_type.bang]: [___, factorialExpression, bp.postfix],
     [token_type.ampersand]: [___, ___, ___o],
     [token_type.tilde]: [___, ___, ___o],
     [token_type.vbar]: [___, ___, ___o],
     [token_type.equal]: [___, assignment, bp.assign],
-    [token_type.less]: [___, ___, ___o],
-    [token_type.greater]: [___, ___, ___o],
-    [token_type.less_equal]: [___, ___, ___o],
-    [token_type.greater_equal]: [___, ___, ___o],
-    [token_type.bang_equal]: [___, ___, ___o],
-    [token_type.equal_equal]: [___, ___, ___o],
+
+    // comparison expressions
+    [token_type.less]: [___, compare, bp.rel],
+    [token_type.greater]: [___, compare, bp.rel],
+    [token_type.less_equal]: [___, compare, bp.rel],
+    [token_type.greater_equal]: [___, compare, bp.rel],
+    [token_type.bang_equal]: [___, compare, bp.rel],
+    [token_type.equal_equal]: [___, compare, bp.rel],
+
+    // tickers
     [token_type.plus_plus]: [___, incrementExpression, bp.postfix],
     [token_type.minus_minus]: [___, decrementExpression, bp.postfix],
-    [token_type.star_star]: [___, ___, ___o],
+    [token_type.star_star]: [___, squareExpression, bp.postfix],
+
+    // Vector operation expressions
     [token_type.dot_add]: [___, vectorInfix, bp.sum],
     [token_type.dot_star]: [___, vectorInfix, bp.product],
     [token_type.dot_minus]: [___, vectorInfix, bp.sum],
     [token_type.dot_caret]: [___, vectorInfix, bp.power],
-    [token_type.at]: [___, ___, ___o],
+    [token_type.at]: [___, vectorInfix, bp.dot_product],
+
+    // Matrix operation expressions
     [token_type.pound_plus]: [___, ___, ___o],
     [token_type.pound_minus]: [___, ___, ___o],
     [token_type.pound_star]: [___, ___, ___o],
-    [token_type.integer]: [___, ___, ___o],
-    [token_type.float]: [___, ___, ___o],
+
+    [token_type.integer]: [number, ___, bp.atom],
+    [token_type.float]: [number, ___, bp.atom],
     [token_type.fraction]: [___, ___, ___o],
     [token_type.scientific]: [___, ___, ___o],
     [token_type.big_integer]: [___, ___, ___o],
-    [token_type.symbol]: [___, ___, ___o],
-    [token_type.string]: [___, ___, ___o],
-    [token_type.boolean]: [___, ___, ___o],
-    [token_type.nan]: [___, ___, ___o],
-    [token_type.inf]: [___, ___, ___o],
-    [token_type.nil]: [___, ___, ___o],
-    [token_type.numeric_constant]: [___, ___, ___o],
+
+    [token_type.symbol]: [varname, impMul, bp.atom],
+    [token_type.string]: [stringLiteral, ___, bp.atom],
+    [token_type.boolean]: [boolLiteral, ___, bp.atom],
+    [token_type.nan]: [constant, ___, bp.atom],
+    [token_type.inf]: [constant, ___, bp.atom],
+    [token_type.nil]: [constant, ___, bp.atom],
+    [token_type.numeric_constant]: [constant, ___, bp.atom],
     [token_type.algebraic]: [___, ___, ___o],
-    [token_type.and]: [___, ___, ___o],
-    [token_type.or]: [___, ___, ___o],
-    [token_type.not]: [___, ___, ___o],
-    [token_type.nand]: [___, ___, ___o],
-    [token_type.xor]: [___, ___, ___o],
-    [token_type.xnor]: [___, ___, ___o],
-    [token_type.nor]: [___, ___, ___o],
+
+    // logical operations
+    [token_type.and]: [___, logicInfix, bp.and],
+    [token_type.or]: [___, logicInfix, bp.or],
+    [token_type.nand]: [___, logicInfix, bp.nand],
+    [token_type.xor]: [___, logicInfix, bp.xor],
+    [token_type.xnor]: [___, logicInfix, bp.xnor],
+    [token_type.nor]: [___, logicInfix, bp.nor],
+    [token_type.not]: [logicNot, ___, bp.not],
+
     [token_type.if]: [___, ___, ___o],
     [token_type.else]: [___, ___, ___o],
     [token_type.fn]: [___, ___, ___o],
@@ -3230,9 +3478,7 @@ function syntax(source: string) {
     [token_type.print]: [___, ___, ___o],
     [token_type.super]: [___, ___, ___o],
     [token_type.this]: [___, ___, ___o],
-    [token_type.rem]: [___, ___, ___o],
-    [token_type.mod]: [___, ___, ___o],
-    [token_type.div]: [___, ___, ___o],
+
     [token_type.native]: [___, ___, ___o],
     [token_type.algebra_string]: [___, ___, ___o],
   };

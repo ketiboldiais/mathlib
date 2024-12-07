@@ -11712,47 +11712,47 @@ function syntax(source: string) {
     [tt.dot_caret]: [___, vector_infix, bp.power], // done
 
     // algebraic expressions
-    [tt.plus]: [prefix, infix, bp.sum],
-    [tt.minus]: [prefix, infix, bp.difference],
-    [tt.star]: [___, infix, bp.product],
-    [tt.slash]: [___, infix, bp.quotient],
-    [tt.caret]: [___, rinfix, bp.power],
-    [tt.percent]: [___, infix, bp.quotient],
-    [tt.rem]: [___, infix, bp.quotient],
-    [tt.mod]: [___, infix, bp.quotient],
-    [tt.div]: [___, infix, bp.quotient],
+    [tt.plus]: [prefix, infix, bp.sum], // done
+    [tt.minus]: [prefix, infix, bp.difference], // done
+    [tt.star]: [___, infix, bp.product], // done
+    [tt.slash]: [___, infix, bp.quotient], // done
+    [tt.caret]: [___, rinfix, bp.power], // done
+    [tt.percent]: [___, infix, bp.quotient], // done
+    [tt.rem]: [___, infix, bp.quotient], // done
+    [tt.mod]: [___, infix, bp.quotient], // done
+    [tt.div]: [___, infix, bp.quotient], // done
 
     // comparison expressions
-    [tt.lt]: [___, compare, bp.rel],
-    [tt.gt]: [___, compare, bp.rel],
-    [tt.neq]: [___, compare, bp.rel],
-    [tt.leq]: [___, compare, bp.rel],
-    [tt.geq]: [___, compare, bp.rel],
-    [tt.deq]: [___, compare, bp.rel],
+    [tt.lt]: [___, compare, bp.rel], // done
+    [tt.gt]: [___, compare, bp.rel], // done
+    [tt.neq]: [___, compare, bp.rel], // done
+    [tt.leq]: [___, compare, bp.rel], // done
+    [tt.geq]: [___, compare, bp.rel], // done
+    [tt.deq]: [___, compare, bp.rel], // done
 
     // logical binary expressions
-    [tt.nand]: [___, logic_infix, bp.nand],
-    [tt.xor]: [___, logic_infix, bp.xor],
-    [tt.xnor]: [___, logic_infix, bp.xnor],
-    [tt.nor]: [___, logic_infix, bp.nor],
-    [tt.and]: [___, logic_infix, bp.and],
-    [tt.or]: [___, logic_infix, bp.or],
-    [tt.not]: [logical_not, ___, bp.not],
+    [tt.nand]: [___, logic_infix, bp.nand], // done
+    [tt.xor]: [___, logic_infix, bp.xor], // done
+    [tt.xnor]: [___, logic_infix, bp.xnor], // done
+    [tt.nor]: [___, logic_infix, bp.nor], // done
+    [tt.and]: [___, logic_infix, bp.and], // done
+    [tt.or]: [___, logic_infix, bp.or], // done
+    [tt.not]: [logical_not, ___, bp.not], // done
 
     // literals
-    [tt.symbol]: [variable_name, implicitMUL, bp.atom],
-    [tt.string]: [string_literal, ___, bp.atom],
-    [tt.bool]: [boolean_literal, ___, bp.atom],
-    [tt.int]: [number, ___, bp.atom],
-    [tt.float]: [number, ___, bp.atom],
+    [tt.symbol]: [variable_name, implicitMUL, bp.atom], // done
+    [tt.string]: [string_literal, ___, bp.atom], // done
+    [tt.bool]: [boolean_literal, ___, bp.atom], // done
+    [tt.int]: [number, ___, bp.atom], // done
+    [tt.float]: [number, ___, bp.atom], // done
     [tt.bignumber]: [big_number, ___, bp.atom],
     [tt.bigfraction]: [big_rational, ___, bp.atom],
     [tt.scientific]: [scientific_number, ___, bp.atom],
     [tt.fraction]: [fraction, ___, bp.atom],
-    [tt.nan]: [constant, ___, bp.atom],
-    [tt.inf]: [constant, ___, bp.atom],
-    [tt.nil]: [constant, ___, bp.atom],
-    [tt.numeric_constant]: [constant, ___, bp.atom],
+    [tt.nan]: [constant, ___, bp.atom], // done
+    [tt.inf]: [constant, ___, bp.atom], // done
+    [tt.nil]: [constant, ___, bp.atom], // done
+    [tt.numeric_constant]: [constant, ___, bp.atom], // done
     [tt.this]: [this_expression, ___, bp.atom],
     [tt.algebra_string]: [algebraic_string, ___, bp.atom],
 
