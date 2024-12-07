@@ -3447,6 +3447,9 @@ function syntax(source: string) {
     }
   }
   
+  /* Parses a this expression. */
+  const thisExpression = (t: Token) => state.newExpr(thisExpr(t));
+  
 
   /**
    * The rules table comprises mappings from every
@@ -3546,7 +3549,7 @@ function syntax(source: string) {
     [token_type.class]: [___, ___, ___o],
     [token_type.print]: [___, ___, ___o],
     [token_type.super]: [___, ___, ___o],
-    [token_type.this]: [___, ___, ___o],
+    [token_type.this]: [thisExpression, ___, bp.atom],
 
     // native calls
     [token_type.native]: [ncall, ___, bp.call],

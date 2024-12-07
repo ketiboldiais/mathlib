@@ -11753,7 +11753,7 @@ function syntax(source: string) {
     [tt.inf]: [constant, ___, bp.atom], // done
     [tt.nil]: [constant, ___, bp.atom], // done
     [tt.numeric_constant]: [constant, ___, bp.atom], // done
-    [tt.this]: [this_expression, ___, bp.atom],
+    [tt.this]: [this_expression, ___, bp.atom], // done
     [tt.algebra_string]: [algebraic_string, ___, bp.atom], // done
 
     // native calls
