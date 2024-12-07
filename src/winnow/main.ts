@@ -2952,6 +2952,10 @@ function syntax(source: string) {
     return innerExpression.map((e) => parendExpr(e));
   };
 
+  /**
+   * Returns true if the given node kind is of the type
+   * that allows implicit multiplication.
+   */
   const allowImplicit = (kind: nodekind) =>
     kind === nodekind.algebraic_binex ||
     kind === nodekind.negation_expression ||
@@ -2961,6 +2965,7 @@ function syntax(source: string) {
     kind === nodekind.integer ||
     kind === nodekind.parend_expression;
 
+  /** Parses a comma separated list. */
   const commaSepList = <E extends Expr>(
     filter: (e: Expr) => e is E,
     errorMessage: string
@@ -3047,6 +3052,43 @@ function syntax(source: string) {
     return state.newExpr(vectorExpr(prev, elements));
   };
 
+  /** Parses an indexing expression. */
+  const indexingExpression: Parslet<Expr> = (op, lhs) => {
+    const index = expr();
+    if (index.isLeft()) return index;
+    const rbracket = state.next();
+    if (!rbracket.isType(token_type.right_bracket)) {
+      return state.error(`Expected a right bracket "]"`, rbracket.$line);
+    }
+    return state.newExpr(indexExpr(lhs, index.unwrap(), op));
+  };
+
+  /** Parses a get expression */
+  const getExpression = (op: Token, lhs: Expr) => {
+    const nxt = state.next();
+    if (!nxt.isType(token_type.symbol)) {
+      return state.error("Expected a property name", nxt.$line);
+    }
+    let exp = getExpr(lhs, nxt);
+    if (state.nextIs(token_type.left_paren)) {
+      const args: Expr[] = [];
+      if (!state.check(token_type.right_paren)) {
+        do {
+          const x = expr();
+          if (x.isLeft()) return x;
+          const arg = x.unwrap();
+          args.push(arg);
+        } while (state.nextIs(token_type.comma));
+      }
+      const rparen = state.next();
+      if (!rparen.isType(token_type.right_paren)) {
+        return state.error(`Expected ")" after method arguments`, rparen.$line);
+      }
+      return state.newExpr(callExpr(exp, op, args));
+    }
+    return state.newExpr(exp);
+  };
+
   const rules: BPTable<Expr> = {
     [token_type.end]: [___, ___, ___o],
     [token_type.error]: [___, ___, ___o],
@@ -3055,11 +3097,11 @@ function syntax(source: string) {
     [token_type.right_paren]: [___, ___, ___o],
     [token_type.left_brace]: [___, ___, ___o],
     [token_type.right_brace]: [___, ___, ___o],
-    [token_type.left_bracket]: [___, ___, ___o],
+    [token_type.left_bracket]: [vectorExpression, indexingExpression, bp.call],
     [token_type.right_bracket]: [___, ___, ___o],
     [token_type.semicolon]: [___, ___, ___o],
     [token_type.colon]: [___, ___, ___o],
-    [token_type.dot]: [___, ___, ___o],
+    [token_type.dot]: [___, getExpression, bp.call],
     [token_type.comma]: [___, ___, ___o],
     [token_type.plus]: [___, ___, ___o],
     [token_type.minus]: [___, ___, ___o],

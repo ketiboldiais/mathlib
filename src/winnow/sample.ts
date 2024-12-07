@@ -11685,15 +11685,15 @@ function syntax(source: string) {
     [tt.END]: [___, ___, ___o],
     [tt.ERROR]: [___, ___, ___o],
     [tt.EMPTY]: [___, ___, ___o],
-    [tt.lparen]: [primary, function_call, bp.call],
+    [tt.lparen]: [primary, function_call, bp.call], // done
     [tt.rparen]: [___, ___, ___o],
     [tt.lbrace]: [___, ___, ___o],
     [tt.rbrace]: [___, ___, ___o],
-    [tt.lbracket]: [vector_expression, indexing_expression, bp.call],
+    [tt.lbracket]: [vector_expression, indexing_expression, bp.call], // done
     [tt.rbracket]: [___, ___, ___o],
     [tt.semicolon]: [___, ___, ___o],
     [tt.colon]: [___, ___, ___o],
-    [tt.dot]: [___, get_expression, bp.call],
+    [tt.dot]: [___, get_expression, bp.call], // done
     [tt.comma]: [___, ___, ___o],
     [tt.super]: [___, ___, ___o],
 
