@@ -1,21 +1,7 @@
 "use client";
 
-import {
-  engine,
-  isErr,
-  lexical,
-  print,
-  syntax,
-  treestring,
-} from "@/winnow/main";
-import {
-  forwardRef,
-  KeyboardEventHandler,
-  ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { engine, isErr, print } from "@/winnow/main";
+import { forwardRef, ReactNode, useEffect, useRef, useState } from "react";
 
 type Children = { children: ReactNode };
 
@@ -122,15 +108,16 @@ type ReplProps = {
   initialLines: ReplLine[];
 };
 
+let E = engine();
+
 const REPL = ({ initialLines = [] }: ReplProps) => {
   const [lines, setLines] = useState(initialLines);
   const execAndGetLine = (execline: string): ReplLine => {
     if (!execline.trim()) {
       return { type: "output", value: "nil" };
     }
-    const evalOutput = engine().compile(execline);
+    const evalOutput = E.compile(execline);
     if (isErr(evalOutput)) {
-      console.log("true");
       return { type: "error", value: evalOutput.toString() };
     } else {
       return { type: "output", value: print(evalOutput) };
@@ -139,6 +126,7 @@ const REPL = ({ initialLines = [] }: ReplProps) => {
   const onSubmit = (execline: string) => {
     if (execline === "clear") {
       setLines([]);
+      E = engine();
       return;
     }
     const newlines = lines.concat([{ type: "input", value: execline }]);
