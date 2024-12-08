@@ -869,6 +869,8 @@ type Primitive =
   | bigint
   | Exponential
   | Fraction
+  | Obj
+  | Fn
   | Err;
 
 /** Returns true iff `x` is null. */
@@ -3428,7 +3430,7 @@ export function syntax(source: string) {
 
   /** Returns a factorial expression parser. */
   const factorialExpression = (op: Token, node: Expr) => {
-    console.log('true')
+    console.log("true");
     if (op.isType(token_type.bang)) {
       return state.newExpr($factorial(op, node));
     }
@@ -3827,7 +3829,7 @@ export function syntax(source: string) {
     if (lhs.isLeft()) return lhs;
     while (minbp < precof(state.$peek.$type)) {
       token = state.next();
-      console.log(token.toString())
+      console.log(token.toString());
       const r = infixRule(token.$type);
       const rhs = r(token, lhs.unwrap());
       if (rhs.isLeft()) return rhs;
@@ -4311,6 +4313,159 @@ function truthy(u: Primitive) {
   return typeof u === "boolean" ? u : u !== null;
 }
 
+/** An object representing a class instance in Twine. */
+class Obj {
+  private klass: Class;
+  private fields: Map<string, Primitive>;
+  constructor(klass: Class) {
+    this.klass = klass;
+    this.fields = new Map();
+  }
+  set(name: string, value: Primitive) {
+    this.fields.set(name, value);
+    return value;
+  }
+  get(name: Token): Primitive {
+    if (this.fields.has(name.$lexeme)) {
+      return this.fields.get(name.$lexeme)!;
+    }
+    const method = this.klass.findMethod(name.$lexeme);
+    if (method !== null) {
+      return method.bind(this);
+    }
+    throw runtimeError(
+      `User accessed a non-existent property “${name}”.`,
+      name.$line
+    );
+  }
+  toString() {
+    return `${this.klass.name} instance`;
+  }
+}
+
+function $isKlassInstance(x: any): x is Obj {
+  return x instanceof Obj;
+}
+
+class Class {
+  name: string;
+  methods: Map<string, Fn>;
+  constructor(name: string, methods: Map<string, Fn>) {
+    this.name = name;
+    this.methods = methods;
+  }
+  arity() {
+    const initalizer = this.findMethod("def");
+    if (initalizer === null) {
+      return 0;
+    }
+    return initalizer.arity();
+  }
+  findMethod(name: string) {
+    if (this.methods.has(name)) {
+      return this.methods.get(name)!;
+    }
+    return null;
+  }
+  call(interpreter: Interpreter, args: Primitive[]) {
+    const instance = new Obj(this);
+    const initializer = this.findMethod("def");
+    if (initializer !== null) {
+      initializer.bind(instance).call(interpreter, args);
+    }
+    return instance;
+  }
+  toString() {
+    return this.name;
+  }
+}
+
+function $isKlass(x: any): x is Class {
+  return x instanceof Class;
+}
+
+function klassObj(name: string, methods: Map<string, Fn>) {
+  return new Class(name, methods);
+}
+
+class RETURN {
+  value: Primitive;
+  constructor(value: Primitive) {
+    this.value = value;
+  }
+}
+
+/** Returns a new `RETURN`. */
+function returnValue(value: Primitive) {
+  return new RETURN(value);
+}
+
+/** An object representing a function in Twine.  */
+class Fn {
+  private declaration: FnStmt;
+  private closure: Environment<Primitive>;
+  private isInitializer: boolean;
+  constructor(
+    declaration: FnStmt,
+    closure: Environment<Primitive>,
+    isInitializer: boolean
+  ) {
+    this.declaration = declaration;
+    this.closure = closure;
+    this.isInitializer = isInitializer;
+  }
+  arity() {
+    return this.declaration.$params.length;
+  }
+  toString() {
+    return `fn ${this.declaration.$name}(...) {...}`;
+  }
+  bind(instance: Obj) {
+    const environment = runtimeEnv(this.closure);
+    environment.define("this", instance, true);
+    return new Fn(this.declaration, environment, this.isInitializer);
+  }
+  call(interpreter: Interpreter, args: Primitive[]) {
+    const environment = runtimeEnv(this.closure);
+    for (let i = 0; i < this.declaration.$params.length; i++) {
+      environment.define(
+        this.declaration.$params[i].$symbol.$lexeme,
+        args[i],
+        false
+      );
+    }
+    try {
+      const out = interpreter.executeBlock(this.declaration.$body, environment);
+      if (this.isInitializer) {
+        return this.closure.getAt(0, "this");
+      }
+      return out;
+    } catch (E) {
+      if (this.isInitializer) {
+        return this.closure.getAt(0, "this");
+      } else if (E instanceof RETURN) {
+        return E.value;
+      } else {
+        throw E;
+      }
+    }
+  }
+}
+
+/** Returns a new `Fn` object. */
+function callable(
+  declaration: FnStmt,
+  closure: Environment<Primitive>,
+  isInitializer: boolean
+) {
+  return new Fn(declaration, closure, isInitializer);
+}
+
+/** Returns true if `x` is an `Fn` oobject, false otherwise. */
+function $isFn(x: any): x is Fn {
+  return x instanceof Fn;
+}
+
 class Interpreter implements Visitor<Primitive> {
   /** This interpreter's environment. */
   $environment: Environment<Primitive>;
@@ -4383,7 +4538,9 @@ class Interpreter implements Visitor<Primitive> {
   }
 
   fnStmt(node: FnStmt): Primitive {
-    throw new Error("Method not implemented.");
+    const f = callable(node, this.$environment, false);
+    this.$environment.define(node.$name.$lexeme, f, false);
+    return f;
   }
 
   ifStmt(node: IfStmt): Primitive {
@@ -4733,7 +4890,24 @@ class Interpreter implements Visitor<Primitive> {
   }
 
   callExpr(node: CallExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const callee = this.eval(node.$callee);
+    const args: Primitive[] = [];
+    for (let i = 0; i < node.$args.length; i++) {
+      args.push(this.eval(node.$args[i]));
+    }
+    if ($isKlass(callee)) {
+      return callee.call(this, args);
+    }
+    if ($isFn(callee)) {
+      return callee.call(this, args);
+    }
+    // deno-fmt-ignore
+    throw runtimeError(
+      `“${strof(
+        callee
+      )}” is neither a function nor a class. Only functions and classes may be called.`,
+      node.$paren.$line
+    );
   }
 
   parendExpr(node: ParendExpr): Primitive {
