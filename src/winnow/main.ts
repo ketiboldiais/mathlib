@@ -857,7 +857,7 @@ class Vector<T extends number[] = number[]> {
 
   /** Returns a string representation of this vector. */
   toString() {
-    return this.$elements.toString();
+    return "[" + this.$elements.toString() + "]";
   }
 
   /** Utility method for performing binary operations. */
@@ -1254,6 +1254,237 @@ function isString(u: any): u is string {
   return typeof u === "string";
 }
 
+class Matrix {
+  $vectors: Vector[];
+  readonly $R: number;
+  readonly $C: number;
+  constructor(vectors: Vector[], rowcount: number, colcount: number) {
+    this.$vectors = vectors;
+    this.$R = rowcount;
+    this.$C = colcount;
+  }
+
+  /** Returns true if this matrix is a square matrix. */
+  isSquare() {
+    return this.$C === this.$R;
+  }
+
+  /** Returns a copy of this matrix. */
+  copy() {
+    const vs = this.$vectors.map((v) => v.copy());
+    return new Matrix(vs, this.$R, this.$C);
+  }
+
+  /** Returns the vector element at the given index (indices start at 1). */
+  element(index: number) {
+    const out = this.$vectors[index - 1];
+    return out !== undefined ? out : null;
+  }
+
+  /** Returns a column vector comprising all the vector elements at the given column. */
+  column(index: number) {
+    if (index > this.$C) {
+      const out: number[] = [];
+      for (let i = 0; i < this.$C; i++) {
+        out.push(0);
+      }
+      return vector(out);
+    }
+    const out: number[] = [];
+    this.$vectors.forEach((vector) => {
+      vector.$elements.forEach((n, i) => {
+        if (i === index) out.push(n);
+      });
+    });
+    return vector(out);
+  }
+
+  /** Returns the nth element at the given row index and column index. An optional fallback value (defaulting to 0) may be provided in the event the indices are out of bounds. */
+  n(rowIndex: number, columnIndex: number, fallback: number = 0) {
+    const out = this.element(rowIndex);
+    if (out === null) return fallback;
+    const n = out.element(columnIndex);
+    return isNumber(n) ? n : fallback;
+  }
+
+  /** Returns the string form of matrix. */
+  toString() {
+    const out = this.$vectors.map((v) => v.toString()).join(",");
+    return `[${out}]`;
+  }
+
+  /** Sets the element at the given row index and column index. The row and column indices are expected to begin at 1. If no element exists at the provided indices, no change is done. */
+  set(row: number, column: number, value: number) {
+    if (this.$vectors[row - 1] === undefined) return this;
+    if (this.$vectors[row - 1].$elements[column - 1] === undefined) return this;
+    const copy = this.copy();
+    copy.$vectors[row - 1].$elements[column - 1] = value;
+    return copy;
+  }
+
+  /** Executes the given callback over each element of this matrix. The row and column index provided in the callback begin at 1. */
+  forEach(
+    callback: (element: number, rowIndex: number, columnIndex: number) => void
+  ) {
+    for (let i = 1; i <= this.$R; i++) {
+      for (let j = 1; j <= this.$C; j++) {
+        callback(this.n(i, j), i, j);
+      }
+    }
+    return this;
+  }
+  
+  
+  /** Returns true if this matrix and the the provided matrix have the same number of rows and the same number of columns. False otherwise. */
+  congruent(matrix: Matrix) {
+    return this.$R === matrix.$R && this.$C === matrix.$C;
+  }
+  
+  
+  /** @internal - Utility method for binary operations on matrices. */
+  private binop(
+    arg: number | (number[])[] | Matrix,
+    op: (a: number, b: number) => number,
+  ) {
+    const other = isNumber(arg)
+      ? Matrix.fill(this.$R, this.$C, arg)
+      : Array.isArray(arg)
+      ? Matrix.from(arg)
+      : arg;
+    if (this.$R !== other.$R || this.$C !== other.$C) return this;
+    const vectors: Vector[] = [];
+    for (let i = 0; i < this.$R; i++) {
+      const nums: number[] = [];
+      const row = this.$vectors[i].$elements;
+      for (let j = 0; j < row.length; j++) {
+        const a = row[j];
+        const b = other.$vectors[i].$elements[j];
+        nums.push(op(a, b));
+      }
+      vectors.push(vector(nums));
+    }
+    return matrix(vectors);
+  }
+  
+  
+  /** Returns this matrix minus the provided matrix. */
+  sub(matrix: Matrix | number | (number[])[]) {
+    return this.binop(matrix, (a, b) => a - b);
+  }
+
+  /** Returns this matrix component-wise-multiplied with provided matrix. */
+  times(matrix: Matrix | number | (number[])[]) {
+    return this.binop(matrix, (a, b) => a * b);
+  }
+
+  /** Returns this matrix plus the provided matrix. */
+  add(matrix: Matrix | number | (number[])[]) {
+    return this.binop(matrix, (a, b) => a + b);
+  }
+
+  /** Returns the negation of this matrix.  */
+  neg() {
+    return this.times(-1);
+  }
+
+  /** Returns the transpose of this matrix. */
+  transpose() {
+    const copy: (number[])[] = [];
+    for (let i = 0; i < this.$R; ++i) {
+      const vector = this.$vectors[i];
+      for (let j = 0; j < this.$C; ++j) {
+        const element = vector.$elements[j];
+        if (isNothing(element)) continue;
+        if (isNothing(copy[j])) {
+          copy[j] = [];
+        }
+        copy[j][i] = element;
+      }
+    }
+    return matrix(copy.map((c) => vector(c)));
+  }
+
+  /** Returns the matrix product of this matrix and the provided matrix. */
+  mul(arg: number | Matrix | (number[])[]) {
+    const Ar = this.$R;
+    const Ac = this.$C;
+    if (arg instanceof Matrix && Ac !== arg.$R) {
+      return this;
+    }
+    const B = Matrix.of(Ar, Ac, arg);
+    const Bc = B.$C;
+    const result: (number[])[] = [];
+    for (let i = 0; i < Ar; i++) {
+      result[i] = [];
+      for (let j = 0; j < Bc; j++) {
+        let sum = 0;
+        for (let k = 0; k < Ac; k++) {
+          const a = this.$vectors[i].$elements[k];
+          const b = B.$vectors[k].$elements[j];
+          sum += a * b;
+        }
+        result[i][j] = sum;
+      }
+    }
+    return matrix(result.map((r) => vector(r)));
+  }
+
+  /** Returns true if this matrix and the provided matrix are equal. */
+  equals(matrix: Matrix) {
+    if (!this.congruent(matrix)) return false;
+    let out = true;
+    this.forEach((n, r, c) => {
+      const m = matrix.n(r, c);
+      if (m !== n) out = false;
+    });
+    return out;
+  }
+  
+  
+  static fill(rows: number, columns: number, arg: number) {
+    const vectors: Vector[] = [];
+    for (let i = 0; i < rows; i++) {
+      const nums: number[] = [];
+      for (let j = 0; j < columns; j++) {
+        nums.push(arg);
+      }
+      vectors.push(vector(nums));
+    }
+    return matrix(vectors);
+  }
+
+  static from(nums: (number[])[]) {
+    const out = nums.map((ns) => vector(ns));
+    return matrix(out);
+  }
+
+  static of(
+    rows: number,
+    columns: number,
+    arg: number | (number[])[] | Matrix,
+  ) {
+    return isNumber(arg)
+      ? Matrix.fill(rows, columns, arg)
+      : Array.isArray(arg)
+      ? Matrix.from(arg)
+      : arg;
+  }
+}
+
+
+/** Returns a new matrix. */
+function matrix(rows: (Vector[]) | (number[])[], cols?: number) {
+  const vectors = rows.map((v) => isVector(v) ? v : Vector.from(v));
+  return new Matrix(
+    vectors,
+    vectors.length,
+    cols !== undefined ? cols : vectors[0].length,
+  );
+}
+
+/** Returns true if the given value is a matrix. */
+const isMatrix = (value: any): value is Matrix => (value instanceof Matrix);
+
 /** An object corresponding to a number of the form `m x 10^n`. */
 class Exponential {
   /** The mantissa in `m x 10^n`. */
@@ -1302,6 +1533,7 @@ type Primitive =
   | Exponential
   | Fraction
   | Obj
+  | Vector
   | Fn
   | Class
   | Err;
@@ -4599,6 +4831,10 @@ type TypeName =
   | "fraction"
   | "exponential"
   | "error"
+  | "obj"
+  | "vector"
+  | "fn"
+  | "class"
   | "unknown";
 
 function typename(x: Primitive): TypeName {
@@ -4622,6 +4858,14 @@ function typename(x: Primitive): TypeName {
     return "exponential";
   } else if (x instanceof Err) {
     return "error";
+  } else if (x instanceof Obj) {
+    return "obj";
+  } else if (x instanceof Vector) {
+    return "vector";
+  } else if (x instanceof Fn) {
+    return "fn";
+  } else if (x instanceof Class) {
+    return "class";
   } else {
     return "unknown";
   }
@@ -5368,7 +5612,21 @@ class Compiler implements Visitor<Primitive> {
   }
 
   vectorExpr(node: VectorExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const nums: number[] = [];
+    const elements = node.$elements;
+    for (let i = 0; i < elements.length; i++) {
+      const n = this.eval(elements[i]);
+      if (typeof n !== "number") {
+        throw runtimeError(
+          `Vectors must only contain either numbers or expressions that reduce to numbers. The value ${strof(
+            n
+          )} is not a number.`,
+          node.$op.$line
+        );
+      }
+      nums.push(n);
+    }
+    return vector(nums);
   }
 
   matrixExpr(node: MatrixExpr): Primitive {
