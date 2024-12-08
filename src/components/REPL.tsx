@@ -130,13 +130,17 @@ const REPL = ({ initialLines = [] }: ReplProps) => {
     }
     const evalOutput = engine().compile(execline);
     if (isErr(evalOutput)) {
-        console.log('true')
+      console.log("true");
       return { type: "error", value: evalOutput.toString() };
     } else {
       return { type: "output", value: print(evalOutput) };
     }
   };
   const onSubmit = (execline: string) => {
+    if (execline === "clear") {
+      setLines([]);
+      return;
+    }
     const newlines = lines.concat([{ type: "input", value: execline }]);
     setLines(newlines);
     if (!execline.trim()) return;

@@ -1461,6 +1461,8 @@ export function lexical(code: string) {
           return errorToken(
             `Encountered a floating point overflow. Consider rewriting "${n}" as a fraction or bigfraction. If "${n}" is to be used symbolically, consider rewriting "${n}" as a scientific number.`
           );
+        } else {
+          return tkn(type).withLiteral(num);
         }
       }
       // handle fractions
@@ -4191,7 +4193,51 @@ class Interpreter implements Visitor<PRIMITIVE> {
     throw new Error("Method not implemented.");
   }
   relationExpr(node: RelationExpr): PRIMITIVE {
-    throw new Error("Method not implemented.");
+    let L = this.eval(node.$left) as any;
+    let R = this.eval(node.$right) as any;
+    const op = node.$op;
+    if ((isFraction(L) && isNumber(R)) || (isNumber(L) && isFraction(R))) {
+      L = Fraction.from(L);
+      R = Fraction.from(R);
+    }
+    if (isFraction(L) && isFraction(R)) {
+      switch (op.$type) {
+        case token_type.less:
+          return L.lt(R);
+        case token_type.greater:
+          return L.gt(R);
+        case token_type.equal_equal:
+          return L.equals(R);
+        case token_type.bang_equal:
+          return !L.equals(R);
+        case token_type.greater_equal:
+          return L.gte(R);
+        case token_type.less_equal:
+          return L.lte(R);
+      }
+    }
+    if (isNumber(L) && isNumber(R)) {
+      switch (op.$type) {
+        case token_type.less:
+          return L < R;
+        case token_type.greater:
+          return L > R;
+        case token_type.equal_equal:
+          return L === R;
+        case token_type.bang_equal:
+          return L !== R;
+        case token_type.greater_equal:
+          return L >= R;
+        case token_type.less_equal:
+          return L <= R;
+      }
+    }
+    throw runtimeError(
+      `Operator "${op.$lexeme}" does not apply to (${typename(L)} × ${typename(
+        R
+      )})`,
+      op.$line
+    );
   }
   assignmentExpr(node: AssignmentExpr): PRIMITIVE {
     throw new Error("Method not implemented.");
@@ -4315,7 +4361,31 @@ class Interpreter implements Visitor<PRIMITIVE> {
     );
   }
   logicalBinex(node: LogicalBinex): PRIMITIVE {
-    throw new Error("Method not implemented.");
+    const L = this.eval(node.$left);
+    const R = this.eval(node.$right);
+    const op = node.$op;
+    if (typeof L !== "boolean" || typeof R !== "boolean") {
+      throw runtimeError(
+        `Operator ${op.$lexeme} does not apply to (${typename(L)} × ${typename(
+          R
+        )}).`,
+        op.$line
+      );
+    }
+    switch (op.$type) {
+      case token_type.and:
+        return L && R;
+      case token_type.or:
+        return L || R;
+      case token_type.nand:
+        return !(L && R);
+      case token_type.nor:
+        return !(L || R);
+      case token_type.xnor:
+        return L === R;
+      case token_type.xor:
+        return L !== R;
+    }
   }
   callExpr(node: CallExpr): PRIMITIVE {
     throw new Error("Method not implemented.");
