@@ -8949,16 +8949,19 @@ class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
     this.resolve(node.expression);
     return;
   }
+  // done
   blockStmt(node: BlockStmt): void {
     this.beginScope();
     this.resolveEach(node.statements);
     this.endScope();
     return;
   }
+  // done
   exprStmt(node: ExprStmt): void {
     this.resolve(node.expression);
     return;
   }
+  // done
   classStmt(node: ClassStmt): void {
     const enclosingClass = this.currentClass;
     this.currentClass = classType.class;
@@ -8980,22 +8983,26 @@ class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
     this.currentClass = enclosingClass;
     return;
   }
+  // done
   fnStmt(node: FnStmt): void {
     this.declare(node.name);
     this.define(node.name.lexeme);
     this.resolveFn(node, functionType.function);
     return;
   }
+  // done
   ifStmt(node: IfStmt): void {
     this.resolve(node.condition);
     this.resolve(node.then);
     this.resolve(node.alt);
     return;
   }
+  // done
   printStmt(node: PrintStmt): void {
     this.resolve(node.expression);
     return;
   }
+  // done
   returnStmt(node: ReturnStmt): void {
     if (this.currentFunction === functionType.none) {
       throw resolverError(
@@ -9014,16 +9021,19 @@ class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
     this.resolve(node.value);
     return;
   }
+  // done
   letStmt(node: VariableStmt): void {
     this.declare(node.name);
     this.resolve(node.value);
     this.define(node.name.lexeme);
     return;
   }
+  // done
   whileStmt(node: WhileStmt): void {
     this.resolve(node.condition);
     this.resolve(node.body);
   }
+  // done
   resolved(statements: Statement[]) {
     try {
       for (let i = 0; i < statements.length; i++) {

@@ -557,6 +557,9 @@ const syntaxError = errorFactory("syntax-error");
 /** Returns a new runtime error. */
 const runtimeError = errorFactory("runtime-error");
 
+/** Returns a new resolver error. */
+const resolverError = errorFactory("resolver-error");
+
 /** Returns a new environment error. */
 const envError = errorFactory("environment-error");
 
@@ -4205,6 +4208,317 @@ export function strof(u: Primitive) {
   }
 }
 
+interface Resolvable<X = any> {
+  resolve(expr: Expr, i: number): X;
+}
+
+enum functionType {
+  none,
+  function,
+  method,
+  initializer,
+}
+
+enum classType {
+  none,
+  class,
+}
+
+class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
+  private $scopes: Map<string, boolean>[] = [];
+  private scopesIsEmpty() {
+    return this.$scopes.length === 0;
+  }
+  private $currentFunction: functionType = functionType.none;
+  private $currentClass: classType = classType.none;
+  private beginScope() {
+    this.$scopes.push(new Map());
+  }
+  private endScope() {
+    this.$scopes.pop();
+  }
+  private resolveEach(nodes: ASTNode[]) {
+    for (let i = 0; i < nodes.length; i++) {
+      this.resolve(nodes[i]);
+    }
+    return;
+  }
+  private resolve(node: ASTNode) {
+    node.accept(this);
+  }
+  private peek(): Map<string, boolean> {
+    return this.$scopes[this.$scopes.length - 1];
+  }
+  private declare(name: Token) {
+    if (this.$scopes.length === 0) return;
+    const scope = this.peek();
+    if (scope.has(name.$lexeme)) {
+      throw resolverError(
+        `Encountered a name collision. The variable “${name.$lexeme}” has already been declared in the current scope.`,
+        name.$line
+      );
+    }
+    scope.set(name.$lexeme, false);
+  }
+  private define(name: string) {
+    if (this.$scopes.length === 0) return;
+    const peek = this.peek();
+    peek.set(name, true);
+  }
+
+  private resolveFn(node: FnStmt, type: functionType) {
+    const enclosingFunction = this.$currentFunction;
+    this.$currentFunction = type;
+    this.beginScope();
+    for (let i = 0; i < node.$params.length; i++) {
+      this.declare(node.$params[i].$symbol);
+      this.define(node.$params[i].$symbol.$lexeme);
+    }
+    this.resolveEach(node.$body);
+    this.endScope();
+    this.$currentFunction = enclosingFunction;
+  }
+
+  resolveLocal(node: Expr, name: string) {
+    for (let i = this.$scopes.length - 1; i >= 0; i--) {
+      const scope = this.$scopes[i];
+      if (scope !== undefined && scope.has(name)) {
+        this.client.resolve(node, this.$scopes.length - 1 - i);
+        return;
+      }
+    }
+  }
+
+  resolved(statements: Statement[]) {
+    try {
+      for (let i = 0; i < statements.length; i++) {
+        this.resolve(statements[i]);
+      }
+      return right(1);
+    } catch (error) {
+      return left(error as Err);
+    }
+  }
+  client: T;
+  constructor(client: T) {
+    this.client = client;
+  }
+  blockStmt(node: BlockStmt): void {
+    this.beginScope();
+    this.resolveEach(node.$statements);
+    this.endScope();
+    return;
+  }
+  exprStmt(node: ExprStmt): void {
+    this.resolve(node.$expression);
+    return;
+  }
+  fnStmt(node: FnStmt): void {
+    this.declare(node.$name);
+    this.define(node.$name.$lexeme);
+    this.resolveFn(node, functionType.function);
+    return;
+  }
+  ifStmt(node: IfStmt): void {
+    this.resolve(node.$condition);
+    this.resolve(node.$then);
+    this.resolve(node.$alt);
+    return;
+  }
+  printStmt(node: PrintStmt): void {
+    this.resolve(node.$expression);
+    return;
+  }
+  returnStmt(node: ReturnStmt): void {
+    if (this.$currentFunction === functionType.none) {
+      throw resolverError(
+        `Encountered the “return” keyword at the top-level. This syntax has no semantic.`,
+        node.$keyword.$line
+      );
+    }
+    if (this.$currentFunction === functionType.initializer) {
+      throw resolverError(
+        `Encounterd the “return” keyword within an initializer.`,
+        node.$keyword.$line
+      );
+    }
+    this.resolve(node.$value);
+    return;
+  }
+  variableStmt(node: VariableStmt): void {
+    this.declare(node.$variable.$symbol);
+    this.resolve(node.$value);
+    this.define(node.$variable.$symbol.$lexeme);
+    return;
+  }
+  whileStmt(node: WhileStmt): void {
+    this.resolve(node.$condition);
+    this.resolve(node.$body);
+  }
+  classStmt(node: ClassStmt): void {
+    const enclosingClass = this.$currentClass;
+    this.$currentClass = classType.class;
+    this.declare(node.$name);
+    this.define(node.$name.$lexeme);
+    this.beginScope();
+    const peek = this.peek();
+    peek.set("this", true);
+    const methods = node.$methods;
+    for (let i = 0; i < methods.length; i++) {
+      const method = methods[i];
+      let declaration = functionType.method;
+      if (method.$name.$lexeme === "init") {
+        declaration = functionType.initializer;
+      }
+      this.resolveFn(method, declaration);
+    }
+    this.endScope();
+    this.$currentClass = enclosingClass;
+    return;
+  }
+  indexExpr(node: IndexExpr): void {
+    this.resolve(node.$list);
+    this.resolve(node.$index);
+    return;
+  }
+  algebraString(node: AlgebraString): void {
+    return;
+  }
+  tupleExpr(node: TupleExpr): void {
+    this.resolveEach(node.$elements.toArray());
+    return;
+  }
+  vectorExpr(node: VectorExpr): void {
+    this.resolveEach(node.$elements);
+    return;
+  }
+  matrixExpr(node: MatrixExpr): void {
+    this.resolveEach(node.$vectors);
+    return;
+  }
+  relationExpr(node: RelationExpr): void {
+    this.resolve(node.$left);
+    this.resolve(node.$right);
+    return;
+  }
+  assignmentExpr(node: AssignmentExpr): void {
+    this.resolve(node.$value);
+    this.resolveLocal(node, node.$symbol.$symbol.$lexeme);
+    return;
+  }
+  nativeCallExpr(node: NativeCallExpr): void {
+    this.resolveEach(node.$args);
+    return;
+  }
+  negExpr(node: NegExpr): void {
+    this.resolve(node.$arg);
+    return;
+  }
+  posExpr(node: PosExpr): void {
+    this.resolve(node.$arg);
+    return;
+  }
+  factorialExpr(node: FactorialExpr): void {
+    this.resolve(node.$arg);
+    return;
+  }
+  notExpr(node: NotExpr): void {
+    this.resolve(node.$arg);
+    return;
+  }
+  vectorBinex(node: VectorBinex): void {
+    this.resolve(node.$left);
+    this.resolve(node.$right);
+    return;
+  }
+  algebraicBinex(node: AlgebraicBinex): void {
+    this.resolve(node.$left);
+    this.resolve(node.$right);
+    return;
+  }
+  logicalBinex(node: LogicalBinex): void {
+    this.resolve(node.$left);
+    this.resolve(node.$right);
+    return;
+  }
+  callExpr(node: CallExpr): void {
+    this.resolve(node.$callee);
+    this.resolveEach(node.$args);
+    return;
+  }
+  parendExpr(node: ParendExpr): void {
+    this.resolve(node.$inner);
+    return;
+  }
+  getExpr(node: GetExpr): void {
+    this.resolve(node.$object);
+    return;
+  }
+  setExpr(node: SetExpr): void {
+    this.resolve(node.$value);
+    this.resolve(node.$object);
+    return;
+  }
+  superExpr(node: SuperExpr): void {
+    throw new Error("super not implemented.");
+  }
+  thisExpr(node: ThisExpr): void {
+    if (this.$currentClass === classType.none) {
+      throw resolverError(
+        `Encountered the keyword “this” outside of a class definition. This syntax has no semantic, since “this” points to nothing.`,
+        node.$keyword.$line
+      );
+    }
+    this.resolveLocal(node, "this");
+    return;
+  }
+  stringConcat(node: StringConcatExpr): void {
+    throw new Error("Method not implemented.");
+  }
+  sym(node: Sym): void {
+    const name = node.$symbol;
+    if (!this.scopesIsEmpty() && this.peek().get(name.$lexeme) === false) {
+      throw resolverError(
+        `The user is attempting to read the variable “${name.$lexeme}” from its own initializer. This syntax has no semantic.`,
+        name.$line
+      );
+    }
+    this.resolveLocal(node, node.$symbol.$lexeme);
+    return;
+  }
+  string(node: StringLit): void {
+    return;
+  }
+  bool(node: Bool): void {
+    return;
+  }
+  nil(node: Nil): void {
+    return;
+  }
+  integer(node: Integer): void {
+    return;
+  }
+  float(node: Float): void {
+    return;
+  }
+  bigInteger(node: BigInteger): void {
+    return;
+  }
+  sciNum(node: SciNum): void {
+    return;
+  }
+  frac(node: Frac): void {
+    return;
+  }
+  numConst(node: NumConst): void {
+    return;
+  }
+}
+
+function resolvable(client: Resolvable) {
+  return new Resolver(client);
+}
+
 /** An object that maps variable names to values. */
 class Environment<T> {
   /** This environment's map of variable names to values. */
@@ -4367,7 +4681,7 @@ class Class {
     }
     return null;
   }
-  call(interpreter: Interpreter, args: Primitive[]) {
+  call(interpreter: Compiler, args: Primitive[]) {
     const instance = new Obj(this);
     const initializer = this.findMethod("def");
     if (initializer !== null) {
@@ -4418,14 +4732,14 @@ class Fn {
     return this.declaration.$params.length;
   }
   toString() {
-    return `fn ${this.declaration.$name}(...) {...}`;
+    return `𝑓 ${this.declaration.$name.$lexeme}`;
   }
   bind(instance: Obj) {
     const environment = runtimeEnv(this.closure);
     environment.define("this", instance, true);
     return new Fn(this.declaration, environment, this.isInitializer);
   }
-  call(interpreter: Interpreter, args: Primitive[]) {
+  call(interpreter: Compiler, args: Primitive[]) {
     const environment = runtimeEnv(this.closure);
     for (let i = 0; i < this.declaration.$params.length; i++) {
       environment.define(
@@ -4466,7 +4780,7 @@ function $isFn(x: any): x is Fn {
   return x instanceof Fn;
 }
 
-class Interpreter implements Visitor<Primitive> {
+class Compiler implements Visitor<Primitive> {
   /** This interpreter's environment. */
   $environment: Environment<Primitive>;
 
@@ -4511,7 +4825,7 @@ class Interpreter implements Visitor<Primitive> {
     }
   }
 
-  exec(statements: Statement[]) {
+  interpret(statements: Statement[]) {
     try {
       let result: Primitive = null;
       const L = statements.length;
@@ -4985,7 +5299,7 @@ class Interpreter implements Visitor<Primitive> {
 }
 
 export function engine() {
-  const interpreter = new Interpreter();
+  const compiler = new Compiler();
   const parse = (code: string) => syntax(code).parset();
   const compile = (code: string) => {
     const prog = parse(code);
@@ -4993,7 +5307,10 @@ export function engine() {
       return prog.unwrap();
     }
     const stmts = prog.unwrap();
-    const out = interpreter.exec(stmts);
+    const interpreter = compiler;
+    const resolved = resolvable(interpreter).resolved(stmts);
+    if (resolved.isLeft()) return resolved.unwrap();
+    const out = interpreter.interpret(stmts);
     return out.unwrap();
   };
   const tokens = (code: string) => {
