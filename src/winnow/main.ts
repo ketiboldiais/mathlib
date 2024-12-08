@@ -63,6 +63,11 @@ export function treestring<T extends Object>(
   return output;
 }
 
+/** Typeguard : Returns true if `x` is Undefined or null. */
+function isNothing(x: any): x is undefined | null {
+  return x === undefined || x === null;
+}
+
 class None {
   _tag: "None" = "None";
   constructor() {}
@@ -661,6 +666,27 @@ function factorialize(num: number) {
   return num;
 }
 
+/** Rounds the given number value to the number of given decimal places. */
+function round(num: number, places: number = 2) {
+  const epsilon = Number.EPSILON;
+  return Math.round(num * 10 ** places * (1 + epsilon)) / 10 ** places;
+}
+
+/** Transforms 1-based indices to 0-based indices. */
+function i0(value: number) {
+  return value === 0 ? 0 : value - 1;
+}
+
+/** Returns a random integer between the provided minimum and maximum (not including the maximum). */
+export function randInt(min: number, max: number) {
+  return floor(Math.random() * (max - min + 1)) + min;
+}
+
+/** Returns a random floating point number between the provided minimum and maximum (not including the maximum). */
+export function randFloat(min: number, max: number) {
+  return Math.random() * (max - min) + min;
+}
+
 // § Primitives
 /** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
 class Fraction {
@@ -817,6 +843,409 @@ function isFraction(u: any): u is Fraction {
   return u instanceof Fraction;
 }
 
+class Vector<T extends number[] = number[]> {
+  $elements: T;
+
+  /** Returns the length of this vector. */
+  get length() {
+    return this.$elements.length;
+  }
+
+  constructor(elements: T) {
+    this.$elements = elements;
+  }
+
+  /** Returns a string representation of this vector. */
+  toString() {
+    return this.$elements.toString();
+  }
+
+  /** Utility method for performing binary operations. */
+  binop(
+    other: Vector | number[] | number,
+    op: (a: number, b: number) => number
+  ) {
+    const arg = isNumber(other)
+      ? homogenousVector(other, this.length)
+      : vector(other);
+    const [A, B] = equalen(this, arg);
+    return vector(A.$elements.map((c, i) => op(c, B.$elements[i])));
+  }
+
+  /** Returns the smallest component of this vector. */
+  min() {
+    let min = Infinity;
+    for (let i = 0; i < this.$elements.length; i++) {
+      const elem = this.$elements[i];
+      if (elem < min) {
+        min = elem;
+      }
+    }
+    return min;
+  }
+
+  /** Returns the largest component of this vector. */
+  max() {
+    let max = -Infinity;
+    for (let i = 0; i < this.$elements.length; i++) {
+      const elem = this.$elements[i];
+      if (elem > max) {
+        max = elem;
+      }
+    }
+    return max;
+  }
+
+  /** Returns the magnitude of this vector.  An optional precision value may be passed roundingthe magnitude to a specified number of decimal places. */
+  mag(precision?: number) {
+    const out = sqrt(this.$elements.reduce((p, c) => p + c ** 2, 0));
+    return !isNothing(precision) ? round(out, floor(precision)) : out;
+  }
+
+  /** Returns the difference between this vector and the provided argument. If a number is passed, returns the scalar difference. */
+  sub(other: Vector | number[] | number) {
+    return this.binop(other, (a, b) => a - b);
+  }
+
+  /** Returns the product between this vector and the provided argument. If a number is passed, returns the scalar difference. */
+  mul(other: Vector | number[] | number) {
+    return this.binop(other, (a, b) => a * b);
+  }
+
+  /** Returns this pair-wise power of this vector to the provided argument. If a number is passed, returns the scalar difference. */
+  pow(other: Vector | number[] | number) {
+    return this.binop(other, (a, b) => a ** b);
+  }
+
+  /** Returns the sum of this vector and the provided argument. If a number is passed, returns the scalar difference. */
+  add(other: Vector | number[] | number) {
+    return this.binop(other, (a, b) => a + b);
+  }
+
+  /** Returns the component-wise division of this vector. */
+  div(other: Vector | number[] | number, alt: number = 0.0001) {
+    return this.binop(other, (a, b) => (b === 0 ? a / alt : a / b));
+  }
+
+  /** Magnifies this vector by the given magnitude. */
+  magnify(magnitude: number) {
+    const mag = this.mag();
+    const ratio = magnitude / mag;
+    return this.mul(ratio);
+  }
+
+  /** Returns this vector with each component squared. */
+  square() {
+    return this.mul(this);
+  }
+
+  /** Returns the negation of this vector. */
+  neg() {
+    return vector(this.$elements.map((c) => -c));
+  }
+
+  /** Returns this vector with each component set to its absolute value. */
+  abs() {
+    return vector(this.$elements.map((c) => Math.abs(c)));
+  }
+
+  /** Returns true if this vector equals the provided vector. */
+  equals(that: Vector) {
+    if (this.length !== that.length) return false;
+    for (let i = 0; i < this.length; i++) {
+      const e1 = this.$elements[i];
+      const e2 = that.$elements[i];
+      if (e1 !== e2) return false;
+    }
+    return true;
+  }
+
+  /** Returns true if every component of this vector is zero. */
+  isZero() {
+    for (let i = 0; i < this.length; i++) {
+      if (this.$elements[i] !== 0) return false;
+    }
+    return true;
+  }
+
+  /** Returns true if this vector comprises exactly two elements. */
+  is2D(): this is Vector<[number, number]> {
+    return this.$elements.length === 2;
+  }
+
+  /** Returns true if this vector comprises exactly three elements. */
+  is3D(): this is Vector<[number, number, number]> {
+    return this.$elements.length === 3;
+  }
+
+  /** Returns a copy of this vector. */
+  copy() {
+    const elements = [];
+    for (let i = 0; i < this.$elements.length; i++) {
+      elements.push(this.$elements[i]);
+    }
+    return new Vector(elements);
+  }
+
+  /** Appends the given value by the provided number of slots. */
+  pad(slots: number, value: number) {
+    if (slots < this.length) {
+      const diff = this.length - slots;
+      const elements = [...this.$elements];
+      for (let i = 0; i < diff; i++) {
+        elements.push(value);
+      }
+      return new Vector(elements);
+    }
+    return this.copy();
+  }
+
+  /** Sets the element at the given position to the provided value. Indices start at 1. If the index is greater than the current size of this vector, the vector will insert additional zeros up to the given index to ensure its elements array is contiguous. */
+  set(index: number, value: number) {
+    index = i0(index);
+    if (index > this.length) {
+      const diff = index - this.length;
+      const vector = this.pad(diff, 0);
+      vector.$elements[index] = value;
+      return vector;
+    }
+    const copy = this.copy();
+    copy.$elements[index] = value;
+    return copy;
+  }
+
+  /** Returns the dot product of this vector and the provided vector. */
+  dot(vector: Vector | number[]) {
+    const other = Vector.from(vector);
+    const order = this.length;
+    if (other.length !== order) return 0;
+    let sum = 0;
+    for (let i = 0; i < order; i++) {
+      const a = this.$elements[i];
+      const b = other.$elements[i];
+      const p = a * b;
+      sum += p;
+    }
+    return sum;
+  }
+
+  /** Returns the angle between the two provided vectors. */
+  theta(other: Vector) {
+    const ab = this.dot(other);
+    const mag = this.mag();
+    const factor = ab / mag;
+    return Math.acos(factor);
+  }
+
+  /** Sets the first element of this vector to the provided value. */
+  px(value: number) {
+    return this.set(1, value);
+  }
+
+  /** Returns the first element of this vector. */
+  get $x() {
+    return isNothing(this.$elements[0]) ? 0 : this.$elements[0];
+  }
+  set $x(n: number) {
+    this.$elements[0] = n;
+  }
+
+  /** Sets the second element of this vector to the provided value. */
+  py(value: number) {
+    return this.set(2, value);
+  }
+
+  /** Returns the second element of this vector. */
+  get $y() {
+    return isNothing(this.$elements[1]) ? 0 : this.$elements[1];
+  }
+  set $y(n: number) {
+    this.$elements[1] = n;
+  }
+
+  /** Sets the third element of this vector to the provided value. */
+  pz(value: number) {
+    return this.set(3, value);
+  }
+
+  /** Returns the third element of this vector. */
+  get $z() {
+    return isNothing(this.$elements[2]) ? 0 : this.$elements[2];
+  }
+  set $z(z: number) {
+    this.$elements[2] = z;
+  }
+
+  /** Sets the fourt element of this vector to the provided value. */
+  pw(value: number) {
+    return this.set(4, value);
+  }
+
+  /** Returns the fourth element of this vector. */
+  get $w() {
+    return isNothing(this.$elements[3]) ? 0 : this.$elements[3];
+  }
+  set $w(w: number) {
+    this.$elements[3] = w;
+  }
+
+  /** Returns the angle between (a) the difference vector of this vector and the provided vector, and (b) the x-axis. */
+  gamma(other: Vector) {
+    const dx = this.$x - other.$x;
+    const dy = this.$y - other.$y;
+    const gamma = Math.atan2(dy, dx);
+    return gamma;
+  }
+
+  /** Returns the element at the given index (indices start at 1). */
+  element(index: number) {
+    const out = this.$elements[index - 1];
+    return out !== undefined ? out : null;
+  }
+
+  /** Returns this vector as a number array. */
+  toArray() {
+    return this.$elements.map((e) => e);
+  }
+
+  /** Returns the unit vector point from this vector 𝑢 to the provided 𝑣. */
+  normalTo(v: Vector) {
+    const d = this.sub(v);
+    return d.normalize();
+  }
+
+  /** Returns this vector’s normal. */
+  normalize() {
+    if (this.isZero()) return this;
+    return this.div(this.mag());
+  }
+
+  /** Returns the 2D vector normal of this vector. */
+  normal2D() {
+    return vector([-this.$y, this.$x]);
+  }
+
+  /** Returns the cross product of this vector in-place. The cross product is used primarily to compute the vector perpendicular to two vectors. */
+  cross(other: Vector) {
+    const ax = this.$x;
+    const ay = this.$y;
+    const az = this.$z;
+    const bx = other.$x;
+    const by = other.$y;
+    const bz = other.$z;
+    const cx = ay * bz - az * by;
+    const cy = az * bx - ax * bz;
+    const cz = ax * by - ay * bx;
+    return vector([cx, cy, cz]);
+  }
+
+  /** Returns the 2D distance between this vector and the provided vector. */
+  distance2D(other: Vector) {
+    const dx = other.$x - this.$x;
+    const dy = other.$y - this.$y;
+    const dsum = dx ** 2 + dy ** 2;
+    return Math.sqrt(dsum);
+  }
+
+  /** Returns the 3D distance between this vector and the provided vector. */
+  distance3D(other: Vector) {
+    const x = other.$x - this.$x;
+    const y = other.$y - this.$y;
+    const z = other.$z - this.$z;
+    const xyz = x * x + y * y + z * z;
+    return Math.sqrt(xyz);
+  }
+
+  /** Returns the projection of this vector (𝑏) onto the provided vector (𝑎) (projₐ𝑏). That is, the projection of 𝑏 onto 𝑎. */
+  project(a: Vector): Vector {
+    const b = this.copy();
+    const prod = a.dot(b);
+    const mag = a.mag();
+    const mag2 = mag * mag;
+    const factor = prod / mag2;
+    const res = a.mul(factor);
+    return res;
+  }
+
+  /** Returns a random 2D vector. The `min` argument is the lower bound of the sampling interval. The `max` argument is The upper bound of the sampling interval. The `restrict` argument takes string values `Z` or `R`. If `Z` is passed, random values are restricted to integers. If `R` is passed, random values are either integers or floats. */
+  static random2D(min: number, max: number, restrict: "Z" | "R" = "R") {
+    const rfn = restrict === "Z" ? randInt : randFloat;
+    const x = rfn(min, max);
+    const y = rfn(min, max);
+    return new Vector([x, y]);
+  }
+
+  /** Returns a random 3D vector. The `min` argument sets the lower bound of the sampling interval. The `max` argument sets the upper bound of the sampling interval. The `restrict` argument takes `Z` or `R`. If `Z` is passed, random values are restricted to integers. If `R` is passed, random values are either integers or floats. */
+  static random3D(min: number, max: number, restrict: "Z" | "R" = "R") {
+    const v = Vector.random2D(min, max, restrict);
+    const x = v.$x;
+    const y = v.$y;
+    const z = restrict === "Z" ? randInt(min, max) : randFloat(min, max);
+    return new Vector([x, y, z]);
+  }
+
+  /** Returns a new vector from the given array of numbers or `Vector`. If a `Vector` is passed, returns a copy of that vector. */
+  static from(value: number[] | Vector): Vector {
+    if (Array.isArray(value)) {
+      return new Vector(value);
+    } else {
+      return value.copy();
+    }
+  }
+}
+
+/** Returns a new vector. If a vector is passed, returns the vector (an identity function). */
+function vector(elements: number[] | Vector) {
+  if (Array.isArray(elements)) {
+    return new Vector(elements);
+  } else {
+    return elements;
+  }
+}
+
+/** Returns a new vector of size `length`, where each element is the given `value`.*/
+function homogenousVector(value: number, length: number) {
+  const elements = [];
+  for (let i = 0; i < length; i++) {
+    elements.push(value);
+  }
+  return new Vector(elements);
+}
+
+/** Given `vectorA` and `vectorB`, ensures that `vectorA` and `vectorB` have the same sizes (number of elements). If one is smaller than the other, the shorter is padded with additional zeros to ensure the lengths are the same. */
+function equalen(vectorA: Vector, vectorB: Vector): [Vector, Vector] {
+  const A = [];
+  const B = [];
+  if (vectorA.length > vectorB.length) {
+    let i = 0;
+    for (i = 0; i < vectorA.length; i++) {
+      A.push(vectorA.$elements[i]);
+      B.push(isNothing(vectorB.$elements[i]) ? 0 : vectorB.$elements[i]);
+    }
+    const n = vectorB.length - i;
+    for (let j = 0; j < n; j++) {
+      B.push(0);
+    }
+    return [vector(A), vector(B)];
+  } else if (vectorA.length < vectorB.length) {
+    let i = 0;
+    for (i = 0; i < vectorB.length; i++) {
+      A.push(isNothing(vectorA.$elements[i]) ? 0 : vectorA.$elements[i]);
+      B.push(vectorB.$elements[i]);
+    }
+    const n = vectorB.length - i;
+    for (let j = 0; j < n; j++) {
+      A.push(0);
+    }
+    return [vector(A), vector(B)];
+  } else {
+    return [vectorA, vectorB];
+  }
+}
+
+/** Returns true if the given value is a vector, false otherwise. */
+const isVector = (value: any): value is Vector => value instanceof Vector;
+
 function isNumber(u: any): u is number {
   return typeof u === "number";
 }
@@ -874,6 +1303,7 @@ type Primitive =
   | Fraction
   | Obj
   | Fn
+  | Class
   | Err;
 
 /** Returns true iff `x` is null. */
@@ -4869,7 +5299,8 @@ class Compiler implements Visitor<Primitive> {
   }
 
   returnStmt(node: ReturnStmt): Primitive {
-    throw new Error("Method not implemented.");
+    const value = this.eval(node.$value);
+    throw returnValue(value);
   }
 
   variableStmt(node: VariableStmt): Primitive {
@@ -4908,7 +5339,20 @@ class Compiler implements Visitor<Primitive> {
   }
 
   classStmt(node: ClassStmt): Primitive {
-    throw new Error("Method not implemented.");
+    this.$environment.define(node.$name.$lexeme, null, true);
+    const methods = new Map<string, Fn>();
+    for (let i = 0; i < node.$methods.length; i++) {
+      const method = node.$methods[i];
+      const f = callable(
+        method,
+        this.$environment,
+        method.$name.$lexeme === "init"
+      );
+      methods.set(method.$name.$lexeme, f);
+    }
+    const klass = klassObj(node.$name.$lexeme, methods);
+    this.$environment.assign(node.$name, klass);
+    return null;
   }
 
   indexExpr(node: IndexExpr): Primitive {
