@@ -1,6 +1,6 @@
 "use client";
 
-import { engine, lexical, print, syntax, treestring } from "@/winnow/main";
+import { engine, lexical, strof, syntax, treestring } from "@/winnow/main";
 import { KeyboardEventHandler, useState } from "react";
 
 const Terminal = () => {
@@ -21,7 +21,7 @@ const Terminal = () => {
   };
   const handleExec = () => {
     const result = engine().compile(input);
-    setOutput(print(result));
+    setOutput(strof(result));
   };
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (event.target instanceof HTMLTextAreaElement) {

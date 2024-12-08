@@ -1,6 +1,6 @@
 "use client";
 
-import { engine, isErr, print } from "@/winnow/main";
+import { engine, isErr, strof } from "@/winnow/main";
 import { forwardRef, ReactNode, useEffect, useRef, useState } from "react";
 
 type Children = { children: ReactNode };
@@ -120,7 +120,7 @@ const REPL = ({ initialLines = [] }: ReplProps) => {
     if (isErr(evalOutput)) {
       return { type: "error", value: evalOutput.toString() };
     } else {
-      return { type: "output", value: print(evalOutput) };
+      return { type: "output", value: strof(evalOutput) };
     }
   };
   const onSubmit = (execline: string) => {

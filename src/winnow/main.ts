@@ -565,6 +565,53 @@ export function isErr(u: any): u is Err {
   return u instanceof Err;
 }
 
+export const {
+  floor,
+  abs,
+  min,
+  max,
+  PI,
+  E,
+  tan,
+  sin,
+  cos,
+  cosh,
+  sinh,
+  tanh,
+  log2: lg,
+  log: ln,
+  log10: log,
+  acosh: arccosh,
+  asinh: arcsinh,
+  atan: arctan,
+  sign,
+  ceil,
+  sqrt,
+} = Math;
+
+export const HALF_PI = PI / 2;
+export const TWO_PI = 2 * PI;
+
+/** Converts the provided number (assumed to be radians) to degrees. */
+export function toDegrees(radians: number) {
+  return radians * (180 / Math.PI);
+}
+
+/** Converts the provided number (assumed to be degrees) to radians. */
+export function toRadians(degrees: number) {
+  return degrees * (Math.PI / 180);
+}
+
+/** Returns the arccosine of x. */
+function arccos(x: number) {
+  return x > 1 ? 0 : x < -1 ? PI : Math.acos(x);
+}
+
+/** Returns the arcsine of x. */
+function arcsin(x: number) {
+  return x >= 1 ? HALF_PI : x <= -1 ? -HALF_PI : Math.asin(x);
+}
+
 /** Returns the integer quotient of a/b. If b = 0, returns NaN. */
 function iquot(a: number, b: number) {
   return b === 0 ? NaN : Math.floor(a / b);
@@ -589,6 +636,26 @@ function gcd(a: number, b: number) {
     a = t;
   }
   return a;
+}
+
+/** Computes the arithmetic mean of the given list of numbers. */
+function avg(...nums: number[]) {
+  let sum = 0;
+  for (let i = 0; i < nums.length; i++) {
+    sum += nums[i];
+  }
+  return sum / nums.length;
+}
+
+/** Returns the factorial of the given number. */
+function factorialize(num: number) {
+  if (num === 0 || num === 1) {
+    return 1;
+  }
+  for (var i = num - 1; i >= 1; i--) {
+    num *= i;
+  }
+  return num;
 }
 
 // § Primitives
@@ -786,6 +853,11 @@ function expo(m: number, n: number) {
   return new Exponential(m, Math.floor(n));
 }
 
+/** Returns true, and asserts, if the given expression u is an exponential. */
+function isExponential(u: any): u is Exponential {
+  return u instanceof Exponential;
+}
+
 // § Graphics
 
 /** A value native to Winnow. */
@@ -798,19 +870,6 @@ type Primitive =
   | Exponential
   | Fraction
   | Err;
-
-/** Returns the PRIMITIVE value as a string. */
-export function print(value: Primitive) {
-  if (
-    value instanceof Exponential ||
-    value instanceof Fraction ||
-    value instanceof Err
-  ) {
-    return value.toString();
-  } else {
-    return `${value}`;
-  }
-}
 
 /** Returns true iff `x` is null. */
 function isNull(x: any): x is null {
@@ -1074,7 +1133,6 @@ type NativeUnary =
   | "tan"
   | "lg"
   | "ln"
-  | "!"
   | "log"
   | "arcsin"
   | "arccos"
@@ -1086,9 +1144,6 @@ type NativeUnary =
   | "tanh"
   | "gcd"
   | "avg"
-  | "deriv"
-  | "simplify"
-  | "subex"
   | "arccosh";
 
 /** A native function that takes more than 1 argument. */
@@ -1331,11 +1386,8 @@ export function lexical(code: string) {
    * of arguments the function takes).
    */
   const nativeFunctions: Record<NativeFn, number> = {
-    deriv: 1,
     avg: 1,
     gcd: 1,
-    simplify: 1,
-    subex: 1,
     sqrt: 1,
     exp: 1,
     ceil: 1,
@@ -1354,7 +1406,6 @@ export function lexical(code: string) {
     arccosh: 1,
     arcsin: 1,
     arcsinh: 1,
-    "!": 1,
     max: 1,
     min: 1,
   };
@@ -4141,6 +4192,17 @@ function typename(x: Primitive): TypeName {
   }
 }
 
+/** Returns a string form of the given Winnow primitive. */
+export function strof(u: Primitive) {
+  if (isExponential(u) || isFraction(u) || isErr(u)) {
+    return u.toString();
+  } else if (u === null) {
+    return "nil";
+  } else {
+    return `${u}`;
+  }
+}
+
 /** An object that maps variable names to values. */
 class Environment<T> {
   /** This environment's map of variable names to values. */
@@ -4245,6 +4307,10 @@ function runtimeEnv(enclosing: Environment<Primitive> | null) {
   return new Environment<Primitive>(enclosing);
 }
 
+function truthy(u: Primitive) {
+  return typeof u === "boolean" ? u : u !== null;
+}
+
 class Interpreter implements Visitor<Primitive> {
   /** This interpreter's environment. */
   $environment: Environment<Primitive>;
@@ -4268,11 +4334,26 @@ class Interpreter implements Visitor<Primitive> {
   resolve(expression: Expr, depth: number) {
     this.$locals.set(expression, depth);
   }
-  
+
   constructor() {
     this.$globals = runtimeEnv(null);
     this.$environment = this.$globals;
     this.$locals = new Map();
+  }
+
+  executeBlock(statements: Statement[], environment: Environment<Primitive>) {
+    const previous = this.$environment;
+    try {
+      this.$environment = environment;
+      let result: Primitive = null;
+      const L = statements.length;
+      for (let i = 0; i < L; i++) {
+        result = this.eval(statements[i]);
+      }
+      return result;
+    } finally {
+      this.$environment = previous;
+    }
   }
 
   exec(statements: Statement[]) {
@@ -4287,53 +4368,98 @@ class Interpreter implements Visitor<Primitive> {
       return left(error as Err);
     }
   }
+
   eval(expr: ASTNode): Primitive {
     return expr.accept(this);
   }
+
   blockStmt(node: BlockStmt): Primitive {
-    throw new Error("Method not implemented.");
+    const env = runtimeEnv(this.$environment);
+    return this.executeBlock(node.$statements, env);
   }
+
   exprStmt(node: ExprStmt): Primitive {
     return this.eval(node.$expression);
   }
+
   fnStmt(node: FnStmt): Primitive {
     throw new Error("Method not implemented.");
   }
+
   ifStmt(node: IfStmt): Primitive {
-    throw new Error("Method not implemented.");
+    return truthy(this.eval(node))
+      ? this.eval(node.$then)
+      : this.eval(node.$alt);
   }
+
   printStmt(node: PrintStmt): Primitive {
-    throw new Error("Method not implemented.");
+    const result = this.eval(node.$expression);
+    return strof(result);
   }
+
   returnStmt(node: ReturnStmt): Primitive {
     throw new Error("Method not implemented.");
   }
+
   variableStmt(node: VariableStmt): Primitive {
     const value = this.eval(node.$value);
-    this.$environment.define(node.$variable.$symbol.$lexeme, value, node.$mutable);
+    this.$environment.define(
+      node.$variable.$symbol.$lexeme,
+      value,
+      node.$mutable
+    );
     return value;
   }
-  whileStmt(node: WhileStmt): Primitive {
-    throw new Error("Method not implemented.");
+
+  /** The upper limit on how many iterations to perform. By default, Infinity (no limit). */
+  private $loopLimit: number = Infinity;
+
+  /** Sets this engine's limit on iterations. */
+  loopLimit(n: number) {
+    this.$loopLimit = n;
+    return this;
   }
+
+  whileStmt(node: WhileStmt): Primitive {
+    let out: Primitive = null;
+    let i = 0;
+    while (truthy(this.eval(node.$condition))) {
+      out = this.eval(node.$body);
+      i++;
+      if (i > this.$loopLimit) {
+        throw runtimeError(
+          `Iterations exceed this environment’s loop limit`,
+          node.$keyword.$line
+        );
+      }
+    }
+    return out;
+  }
+
   classStmt(node: ClassStmt): Primitive {
     throw new Error("Method not implemented.");
   }
+
   indexExpr(node: IndexExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   algebraString(node: AlgebraString): Primitive {
     throw new Error("Method not implemented.");
   }
+
   tupleExpr(node: TupleExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   vectorExpr(node: VectorExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   matrixExpr(node: MatrixExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   relationExpr(node: RelationExpr): Primitive {
     let L = this.eval(node.$left) as any;
     let R = this.eval(node.$right) as any;
@@ -4381,12 +4507,75 @@ class Interpreter implements Visitor<Primitive> {
       op.$line
     );
   }
+
   assignmentExpr(node: AssignmentExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const value = this.eval(node.$value);
+    const distance = this.$locals.get(node);
+    if (distance !== undefined) {
+      this.$environment.assignAt(distance, node.$symbol.$symbol.$lexeme, value);
+    } else {
+      this.$globals.assign(node.$symbol.$symbol, value);
+    }
+    return value;
   }
+
   nativeCallExpr(node: NativeCallExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const val = node.$args.map((v) => this.eval(v)) as any[];
+    switch (node.$name.$lexeme) {
+      case "gcd": {
+        const a = floor(val[0]);
+        const b = floor(val[1]);
+        return gcd(a, b);
+      }
+      case "tanh":
+        return tanh(val[0]);
+      case "sqrt":
+        return sqrt(val[0]);
+      case "sinh":
+        return sinh(val[0]);
+      case "exp":
+        return Math.exp(val[0]);
+      case "cosh":
+        return cosh(val[0]);
+      case "floor":
+        return floor(val[0]);
+      case "ceil":
+        return ceil(val[0]);
+      case "arctan":
+        return arctan(val[0]);
+      case "arcsinh":
+        return arcsinh(val[0]);
+      case "arcsin":
+        return arcsin(val[0]);
+      case "arccosh":
+        return arccosh(val[0]);
+      case "arccos":
+        return arccos(val[0]);
+      case "cos":
+        return cos(val[0]);
+      case "sin":
+        return sin(val[0]);
+      case "tan":
+        return tan(val[0]);
+      case "lg":
+        return lg(val[0]);
+      case "ln":
+        return ln(val[0]);
+      case "log":
+        return log(val[0]);
+      case "max":
+        return max(...val);
+      case "min":
+        return min(...val);
+      case "avg":
+        return avg(...val);
+    }
+    throw runtimeError(
+      `Native function "${node.$name.$lexeme}" not currently supported.`,
+      node.$name.$line
+    );
   }
+
   negExpr(node: NegExpr): Primitive {
     const x = this.eval(node.$arg);
     if (typeof x === "number" || typeof x === "bigint") {
@@ -4402,6 +4591,7 @@ class Interpreter implements Visitor<Primitive> {
       );
     }
   }
+
   posExpr(node: PosExpr): Primitive {
     const x = this.eval(node.$arg);
     if (isNumber(x)) {
@@ -4415,9 +4605,18 @@ class Interpreter implements Visitor<Primitive> {
       );
     }
   }
+
   factorialExpr(node: FactorialExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const result = this.eval(node.$arg);
+    if (isNumber(result) && Number.isInteger(result)) {
+      return factorialize(result);
+    }
+    throw runtimeError(
+      `Operator "!" does not apply to ${typename(result)}`,
+      node.$op.$line
+    );
   }
+
   notExpr(node: NotExpr): Primitive {
     const x = this.eval(node.$arg);
     if (typeof x === "boolean") {
@@ -4429,9 +4628,11 @@ class Interpreter implements Visitor<Primitive> {
       );
     }
   }
+
   vectorBinex(node: VectorBinex): Primitive {
     throw new Error("Method not implemented.");
   }
+
   algebraicBinex(node: AlgebraicBinex): Primitive {
     let L = this.eval(node.$left) as any;
     let R = this.eval(node.$right) as any;
@@ -4502,6 +4703,7 @@ class Interpreter implements Visitor<Primitive> {
       node.$op.$line
     );
   }
+
   logicalBinex(node: LogicalBinex): Primitive {
     const L = this.eval(node.$left);
     const R = this.eval(node.$right);
@@ -4529,24 +4731,31 @@ class Interpreter implements Visitor<Primitive> {
         return L !== R;
     }
   }
+
   callExpr(node: CallExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   parendExpr(node: ParendExpr): Primitive {
     return this.eval(node.$inner);
   }
+
   getExpr(node: GetExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   setExpr(node: SetExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   superExpr(node: SuperExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   thisExpr(node: ThisExpr): Primitive {
     throw new Error("Method not implemented.");
   }
+
   stringConcat(node: StringConcatExpr): Primitive {
     const L = this.eval(node.$left);
     const R = this.eval(node.$right);
@@ -4559,33 +4768,43 @@ class Interpreter implements Visitor<Primitive> {
       );
     }
   }
+
   sym(node: Sym): Primitive {
     return this.lookupVariable(node.$symbol, node);
   }
+
   string(node: StringLit): Primitive {
     return node.$value;
   }
+
   bool(node: Bool): Primitive {
     return node.$value;
   }
+
   nil(node: Nil): Primitive {
     return node.$value;
   }
+
   integer(node: Integer): Primitive {
     return node.$value;
   }
+
   float(node: Float): Primitive {
     return node.$value;
   }
+
   bigInteger(node: BigInteger): Primitive {
     return node.$value;
   }
+
   sciNum(node: SciNum): Primitive {
     return node.$value;
   }
+
   frac(node: Frac): Primitive {
     return node.$value;
   }
+
   numConst(node: NumConst): Primitive {
     return node.$value;
   }
