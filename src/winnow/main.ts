@@ -340,7 +340,7 @@ class LinkedList<T> {
   toString(f?: (x: T, index: number) => string) {
     const out = this.clone();
     const g = f ? f : (x: T, index: number) => x;
-    return out.map((d, i) => g(d, i)).join();
+    return "(" + out.map((d, i) => g(d, i)).join(",") + ")";
   }
 
   /** Returns a new list whose elements satisfy the given predicate. */
@@ -1525,6 +1525,8 @@ type Primitive =
   | Fraction
   | Obj
   | Vector
+  | Matrix
+  | LinkedList<Primitive>
   | Fn
   | Class
   | Err;
@@ -2990,20 +2992,27 @@ class MatrixExpr extends Expr {
     const vectors = this.$vectors.map((v) => v.toString()).join(",");
     return `[${vectors}]`;
   }
+  $op: Token;
   $vectors: VectorExpr[];
   $rowCount: number;
   $colCount: number;
-  constructor(vectors: VectorExpr[], rows: number, columns: number) {
+  constructor(vectors: VectorExpr[], rows: number, columns: number, op: Token) {
     super();
     this.$vectors = vectors;
     this.$rowCount = rows;
     this.$colCount = columns;
+    this.$op = op;
   }
 }
 
 /** Returns a new matrix expression. */
-function $matrix(vectors: VectorExpr[], rowCount: number, colCount: number) {
-  return new MatrixExpr(vectors, rowCount, colCount);
+function $matrix(
+  vectors: VectorExpr[],
+  rowCount: number,
+  colCount: number,
+  op: Token
+) {
+  return new MatrixExpr(vectors, rowCount, colCount, op);
 }
 
 /** A node corresponding to a symbol. */
@@ -3802,7 +3811,7 @@ class ParserState<STMT extends TreeNode, EXPR extends TreeNode> {
   }
   /** Returns true if there is nothing left to parse in the parser state. */
   atEnd() {
-    return this.lexer.atEnd() || this.$error !== null;
+    return this.$peek.isType(token_type.end) || this.$error !== null;
   }
 
   /** Returns a new error in a LEFT monad. */
@@ -4026,7 +4035,7 @@ export function syntax(source: string) {
           state.$current.$line
         );
       }
-      return state.newExpr($matrix(vectors, rows, columns));
+      return state.newExpr($matrix(vectors, rows, columns, prev));
     }
     return state.newExpr($vector(prev, elements));
   };
@@ -4086,7 +4095,6 @@ export function syntax(source: string) {
 
   /** Returns a factorial expression parser. */
   const factorialExpression = (op: Token, node: Expr) => {
-    console.log("true");
     if (op.isType(token_type.bang)) {
       return state.newExpr($factorial(op, node));
     }
@@ -4482,10 +4490,11 @@ export function syntax(source: string) {
     let token = state.next();
     const pre = prefixRule(token.$type);
     let lhs = pre(token, $nil());
-    if (lhs.isLeft()) return lhs;
+    if (lhs.isLeft()) {
+      return lhs;
+    }
     while (minbp < precof(state.$peek.$type)) {
       token = state.next();
-      console.log(token.toString());
       const r = infixRule(token.$type);
       const rhs = r(token, lhs.unwrap());
       if (rhs.isLeft()) return rhs;
@@ -4824,8 +4833,10 @@ type TypeName =
   | "error"
   | "obj"
   | "vector"
+  | "matrix"
   | "fn"
   | "class"
+  | "list"
   | "unknown";
 
 function typename(x: Primitive): TypeName {
@@ -4853,10 +4864,14 @@ function typename(x: Primitive): TypeName {
     return "obj";
   } else if (x instanceof Vector) {
     return "vector";
+  } else if (x instanceof Matrix) {
+    return "matrix";
   } else if (x instanceof Fn) {
     return "fn";
   } else if (x instanceof Class) {
     return "class";
+  } else if (x instanceof LinkedList) {
+    return "list";
   } else {
     return "unknown";
   }
@@ -4915,7 +4930,9 @@ class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
     return this.$scopes[this.$scopes.length - 1];
   }
   private declare(name: Token) {
-    if (this.$scopes.length === 0) return;
+    if (this.$scopes.length === 0) {
+      return;
+    }
     const scope = this.peek();
     if (scope.has(name.$lexeme)) {
       throw resolverError(
@@ -5629,7 +5646,8 @@ class Compiler implements Visitor<Primitive> {
   }
 
   tupleExpr(node: TupleExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const elements = node.$elements.map((e) => this.eval(e));
+    return elements;
   }
 
   vectorExpr(node: VectorExpr): Primitive {
@@ -5651,7 +5669,19 @@ class Compiler implements Visitor<Primitive> {
   }
 
   matrixExpr(node: MatrixExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const vs = node.$vectors;
+    const vectors: Vector[] = [];
+    for (let i = 0; i < vs.length; i++) {
+      const v = this.eval(vs[i]);
+      if (!isVector(v)) {
+        throw runtimeError(
+          `Expected a vector but got a ${typename(v)}`,
+          node.$op.$line
+        );
+      }
+      vectors.push(v);
+    }
+    return matrix(vectors);
   }
 
   relationExpr(node: RelationExpr): Primitive {

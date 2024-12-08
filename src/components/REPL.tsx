@@ -145,7 +145,7 @@ const REPL = ({ initialLines = [] }: ReplProps) => {
   }, [lines]);
   return (
     <Container>
-      <TerminalContent height={200} ref={terminalContentRef}>
+      <TerminalContent height={500} ref={terminalContentRef}>
         {lines.map((line, i) =>
           line.type === "input" ? (
             <InputLine key={i}>
