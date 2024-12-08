@@ -1333,18 +1333,16 @@ class Matrix {
     }
     return this;
   }
-  
-  
+
   /** Returns true if this matrix and the the provided matrix have the same number of rows and the same number of columns. False otherwise. */
   congruent(matrix: Matrix) {
     return this.$R === matrix.$R && this.$C === matrix.$C;
   }
-  
-  
+
   /** @internal - Utility method for binary operations on matrices. */
   private binop(
-    arg: number | (number[])[] | Matrix,
-    op: (a: number, b: number) => number,
+    arg: number | number[][] | Matrix,
+    op: (a: number, b: number) => number
   ) {
     const other = isNumber(arg)
       ? Matrix.fill(this.$R, this.$C, arg)
@@ -1365,20 +1363,19 @@ class Matrix {
     }
     return matrix(vectors);
   }
-  
-  
+
   /** Returns this matrix minus the provided matrix. */
-  sub(matrix: Matrix | number | (number[])[]) {
+  sub(matrix: Matrix | number | number[][]) {
     return this.binop(matrix, (a, b) => a - b);
   }
 
   /** Returns this matrix component-wise-multiplied with provided matrix. */
-  times(matrix: Matrix | number | (number[])[]) {
+  times(matrix: Matrix | number | number[][]) {
     return this.binop(matrix, (a, b) => a * b);
   }
 
   /** Returns this matrix plus the provided matrix. */
-  add(matrix: Matrix | number | (number[])[]) {
+  add(matrix: Matrix | number | number[][]) {
     return this.binop(matrix, (a, b) => a + b);
   }
 
@@ -1389,7 +1386,7 @@ class Matrix {
 
   /** Returns the transpose of this matrix. */
   transpose() {
-    const copy: (number[])[] = [];
+    const copy: number[][] = [];
     for (let i = 0; i < this.$R; ++i) {
       const vector = this.$vectors[i];
       for (let j = 0; j < this.$C; ++j) {
@@ -1405,7 +1402,7 @@ class Matrix {
   }
 
   /** Returns the matrix product of this matrix and the provided matrix. */
-  mul(arg: number | Matrix | (number[])[]) {
+  mul(arg: number | Matrix | number[][]) {
     const Ar = this.$R;
     const Ac = this.$C;
     if (arg instanceof Matrix && Ac !== arg.$R) {
@@ -1413,7 +1410,7 @@ class Matrix {
     }
     const B = Matrix.of(Ar, Ac, arg);
     const Bc = B.$C;
-    const result: (number[])[] = [];
+    const result: number[][] = [];
     for (let i = 0; i < Ar; i++) {
       result[i] = [];
       for (let j = 0; j < Bc; j++) {
@@ -1439,8 +1436,7 @@ class Matrix {
     });
     return out;
   }
-  
-  
+
   static fill(rows: number, columns: number, arg: number) {
     const vectors: Vector[] = [];
     for (let i = 0; i < rows; i++) {
@@ -1453,16 +1449,12 @@ class Matrix {
     return matrix(vectors);
   }
 
-  static from(nums: (number[])[]) {
+  static from(nums: number[][]) {
     const out = nums.map((ns) => vector(ns));
     return matrix(out);
   }
 
-  static of(
-    rows: number,
-    columns: number,
-    arg: number | (number[])[] | Matrix,
-  ) {
+  static of(rows: number, columns: number, arg: number | number[][] | Matrix) {
     return isNumber(arg)
       ? Matrix.fill(rows, columns, arg)
       : Array.isArray(arg)
@@ -1471,19 +1463,18 @@ class Matrix {
   }
 }
 
-
 /** Returns a new matrix. */
-function matrix(rows: (Vector[]) | (number[])[], cols?: number) {
-  const vectors = rows.map((v) => isVector(v) ? v : Vector.from(v));
+function matrix(rows: Vector[] | number[][], cols?: number) {
+  const vectors = rows.map((v) => (isVector(v) ? v : Vector.from(v)));
   return new Matrix(
     vectors,
     vectors.length,
-    cols !== undefined ? cols : vectors[0].length,
+    cols !== undefined ? cols : vectors[0].length
   );
 }
 
 /** Returns true if the given value is a matrix. */
-const isMatrix = (value: any): value is Matrix => (value instanceof Matrix);
+const isMatrix = (value: any): value is Matrix => value instanceof Matrix;
 
 /** An object corresponding to a number of the form `m x 10^n`. */
 class Exponential {
@@ -5600,7 +5591,37 @@ class Compiler implements Visitor<Primitive> {
   }
 
   indexExpr(node: IndexExpr): Primitive {
-    throw new Error("Method not implemented.");
+    const L = this.eval(node.$list);
+    const I = this.eval(node.$index) as number;
+    if (!isNumber(I)) {
+      throw runtimeError(
+        `Expected a number index, but got “${strof(I)}”`,
+        node.$op.$line
+      );
+    }
+    if (isVector(L) || isMatrix(L)) {
+      const out = L.element(I);
+      if (out === null) {
+        throw runtimeError(
+          `Encountered an out-of-bounds index.\nThe provided index exceeds the length of the targeted sequential.`,
+          node.$op.$line
+        );
+      } else {
+        return out;
+      }
+    } else if (Array.isArray(L)) {
+      const out = L[I - 1];
+      if (out === undefined) {
+        return null;
+      } else {
+        return out;
+      }
+    } else {
+      throw runtimeError(
+        `Expected a sequential for indexing, but got “${strof(L)}”`,
+        node.$op.$line
+      );
+    }
   }
 
   algebraString(node: AlgebraString): Primitive {
