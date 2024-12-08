@@ -2355,6 +2355,8 @@ export function lexical(code: string) {
       }
     }
     switch (char) {
+      case "@":
+        return tkn(token_type.at);
       case ":":
         return tkn(token_type.colon);
       case "&":
@@ -5854,7 +5856,27 @@ class Compiler implements Visitor<Primitive> {
   }
 
   vectorBinex(node: VectorBinex): Primitive {
-    throw new Error("Method not implemented.");
+    const op = node.$op;
+    const left = this.eval(node.$left);
+    const right = this.eval(node.$right);
+    if (!isVector(left) || !isVector(right)) {
+      throw runtimeError(
+        `The operator "${op.$lexeme}" is restricted to (vector × vector).`,
+        op.$line
+      );
+    }
+    switch (op.$type) {
+      case token_type.dot_add:
+        return left.add(right);
+      case token_type.dot_minus:
+        return left.sub(right);
+      case token_type.dot_star:
+        return left.mul(right);
+      case token_type.dot_caret:
+        return left.pow(right);
+      case token_type.at:
+        return left.dot(right);
+    }
   }
 
   algebraicBinex(node: AlgebraicBinex): Primitive {
