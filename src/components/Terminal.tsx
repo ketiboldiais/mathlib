@@ -1,6 +1,6 @@
 "use client";
 
-import { lexical, syntax, treestring } from "@/winnow/main";
+import { engine, lexical, print, syntax, treestring } from "@/winnow/main";
 import { KeyboardEventHandler, useState } from "react";
 
 const Terminal = () => {
@@ -11,21 +11,17 @@ const Terminal = () => {
   };
   const handleTokenize = () => {
     const source = input;
-    const result = lexical(source).stream();
-    if (result.isLeft()) {
-      setOutput(result.unwrap().toString());
-    } else {
-      setOutput(result.unwrap().toString());
-    }
+    const result = engine().tokens(source);
+    setOutput(result);
   };
   const handleParse = () => {
     const source = input;
-    const result = syntax(source).parset();
-    if (result.isLeft()) {
-      setOutput(result.unwrap().toString());
-    } else {
-      setOutput(treestring(result.unwrap()));
-    }
+    const result = engine().ast(source);
+    setOutput(result);
+  };
+  const handleExec = () => {
+    const result = engine().compile(input);
+    setOutput(print(result));
   };
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
     if (event.target instanceof HTMLTextAreaElement) {
@@ -33,7 +29,8 @@ const Terminal = () => {
         event.preventDefault();
         const start = event.target.selectionStart;
         const end = event.target.selectionEnd;
-        const newvalue = input.substring(0, start) + '  ' + input.substring(end); 
+        const newvalue =
+          input.substring(0, start) + "  " + input.substring(end);
         setInput(newvalue);
         event.target.selectionStart = event.target.selectionEnd = start + 2;
       }
@@ -52,6 +49,9 @@ const Terminal = () => {
           Scan
         </button>
         <button onClick={() => handleParse()} className="border">
+          Parse
+        </button>
+        <button onClick={() => handleExec()} className="border">
           Parse
         </button>
       </div>

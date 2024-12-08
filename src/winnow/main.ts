@@ -554,8 +554,41 @@ const lexicalError = errorFactory("lexical-error");
 /** Returns a new syntax error. */
 const syntaxError = errorFactory("syntax-error");
 
-// § Primitives
+/** Returns a new syntax error. */
+const runtimeError = errorFactory("runtime-error");
 
+/** Returns true if the given expression u is an Err object. */
+export function isErr(u: any): u is Err {
+  return u instanceof Err;
+}
+
+/** Returns the integer quotient of a/b. If b = 0, returns NaN. */
+function iquot(a: number, b: number) {
+  return b === 0 ? NaN : Math.floor(a / b);
+}
+
+/** Returns a % b. */
+function mod(dividend: number, divisor: number) {
+  return ((dividend % divisor) + divisor) % divisor;
+}
+
+/** Returns the a% of b. */
+function percent(a: number, b: number) {
+  return (a / 100) * b;
+}
+
+/** Returns the greatest common denominator of a and b. */
+function gcd(a: number, b: number) {
+  let t: number;
+  while (b !== 0) {
+    t = b;
+    b = a % b;
+    a = t;
+  }
+  return a;
+}
+
+// § Primitives
 /** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
 class Fraction {
   /** The numerator of this fraction. */
@@ -566,8 +599,120 @@ class Fraction {
     this.$n = n;
     this.$d = d;
   }
+
+  /** Returns this fraction as a string. */
   toString() {
-    return `${this.$n}/${this.$d}`;
+    return `${this.$n}|${this.$d}`;
+  }
+
+  /** Negates this fraction. */
+  negate() {
+    return new Fraction(-this.$n, this.$d);
+  }
+
+  /** Returns this fraction times the other fraction. */
+  times(other: Fraction) {
+    return Fraction.simplify(
+      new Fraction(other.$n * this.$n, other.$d * this.$d)
+    );
+  }
+
+  /** Returns this fraction times the other fraction. */
+  divide(other: Fraction) {
+    return Fraction.simplify(
+      new Fraction(this.$n * other.$d, this.$d * other.$n)
+    );
+  }
+
+  /** Returns this fraction plus the other fraction. */
+  plus(other: Fraction) {
+    return Fraction.simplify(
+      new Fraction(this.$n * other.$d + other.$n * this.$d, this.$d * other.$d)
+    );
+  }
+
+  /** Returns this fraction minus the other fraction. */
+  minus(other: Fraction) {
+    return Fraction.simplify(
+      new Fraction(this.$n * other.$d - other.$n * this.$d, this.$d * other.$d)
+    );
+  }
+
+  /** Returns true if this fraction is less than or equal to the other fraction. */
+  lte(other: Fraction) {
+    const thisN = this.$n;
+    const thisD = this.$d;
+    const otherN = other.$n;
+    const otherD = other.$d;
+    return thisN * otherD <= otherN * thisD;
+  }
+
+  /** Returns true if this fraction is less than the other. */
+  lt(other: Fraction) {
+    return this.lte(other) && !this.equals(other);
+  }
+
+  /** Returns true if this fraction is greater than the other. */
+  gt(other: Fraction) {
+    return !this.lte(other);
+  }
+
+  /** Returns true if this fraction is greater than or equal to the other. */
+  gte(other: Fraction) {
+    return this.gt(other) || this.equals(other);
+  }
+
+  /** Returns true if this fraction equals the other fraction. */
+  equals(other: Fraction) {
+    const a = Fraction.simplify(this);
+    const b = Fraction.simplify(other);
+    return a.$n === b.$n && a.$d === b.$d;
+  }
+  float() {
+    return this.$n / this.$d;
+  }
+  /** Simplifies the given fraction. */
+  static simplify(frac: Fraction) {
+    const numerator = frac.$n;
+    const denominator = frac.$d;
+    const sgn = Math.sign(numerator) * Math.sign(denominator);
+    const n = Math.abs(numerator);
+    const d = Math.abs(denominator);
+    const f = gcd(n, d);
+    return new Fraction((sgn * n) / f, d / f);
+  }
+
+  /** Returns the given number as a fraction. */
+  static from(value: number | Fraction) {
+    // We use the method of continued fractions here.
+    if (value instanceof Fraction) {
+      return value;
+    } else if (Number.isInteger(value)) {
+      return new Fraction(value, 1);
+    } else {
+      let eps = 1.0e-15;
+      let x = value;
+      let a = Math.floor(x);
+      let h1 = 1;
+      let h2: number;
+      let k1 = 0;
+      let k2: number;
+      let h = a;
+      let k = 1;
+
+      while (x - a > eps * k * k) {
+        x = 1 / (x - a);
+        a = Math.floor(x);
+        h2 = h1;
+        h1 = h;
+        k2 = k1;
+        k1 = k;
+        h = h2 + a * h1;
+        k = k2 + a * k1;
+      }
+
+      return new Fraction(h, k);
+    }
   }
 }
 
@@ -579,11 +724,32 @@ class Fraction {
  * @returns A new instance of a fraction.
  */
 function fraction(n: number, d: number) {
-  return new Fraction(Math.floor(n), Math.floor(d));
+  const N = Math.floor(n);
+  const D = Math.abs(Math.floor(d));
+  if (n < 0 && d < 0) {
+    return new Fraction(Math.abs(N), Math.abs(D));
+  } else if (n < 0 && d > 0) {
+    return new Fraction(N, D);
+  } else if (n > 0 && d < 0) {
+    return new Fraction(-N, D);
+  } else if (d === 0) {
+    return new Fraction(NaN, NaN);
+  } else {
+    return new Fraction(Math.floor(n), Math.floor(d));
+  }
+}
+
+/** Returns true if the given object is a fraction. */
+function isFraction(u: any): u is Fraction {
+  return u instanceof Fraction;
+}
+
+function isNumber(u: any): u is number {
+  return typeof u === "number";
 }
 
 /** An object corresponding to a number of the form `m x 10^n`. */
-class Scientific_Number {
+class Exponential {
   /** The mantissa in `m x 10^n`. */
   $m: number;
   /** The exponent (an integer) in `m x 10^n` */
@@ -595,6 +761,12 @@ class Scientific_Number {
   toString() {
     return `${this.$m}E{${this.$n}}`;
   }
+  copy() {
+    return new Exponential(this.$m, this.$n);
+  }
+  negate() {
+    return new Exponential(-this.$m, this.$n);
+  }
 }
 
 /**
@@ -603,9 +775,11 @@ class Scientific_Number {
  * @param n The exponent (an integer) in `m x 10^n`.
  * @returns A new scientific number (m x 10^n).
  */
-function sci(m: number, n: number) {
-  return new Scientific_Number(m, Math.floor(n));
+function expo(m: number, n: number) {
+  return new Exponential(m, Math.floor(n));
 }
+
+// § Graphics
 
 /** A value native to Winnow. */
 type PRIMITIVE =
@@ -614,9 +788,22 @@ type PRIMITIVE =
   | null
   | boolean
   | bigint
-  | Scientific_Number
+  | Exponential
   | Fraction
   | Err;
+
+/** Returns the PRIMITIVE value as a string. */
+export function print(value: PRIMITIVE) {
+  if (
+    value instanceof Exponential ||
+    value instanceof Fraction ||
+    value instanceof Err
+  ) {
+    return value.toString();
+  } else {
+    return `${value}`;
+  }
+}
 
 /** Returns true iff `x` is null. */
 function isNull(x: any): x is null {
@@ -1288,7 +1475,7 @@ export function lexical(code: string) {
         const [a, b] = n.split("E");
         const base = Number.parseFloat(a);
         const exponent = Number.parseInt(b);
-        return tkn(type).withLiteral(sci(base, exponent));
+        return tkn(type).withLiteral(expo(base, exponent));
       }
     }
     return errorToken(`Unrecognized number: "${n}".`);
@@ -1582,241 +1769,6 @@ export function lexical(code: string) {
   };
 
   return { stream, scan, atEnd };
-}
-
-abstract class MJSON {}
-abstract class StmtJSON extends MJSON {}
-
-class IfStmtJSON extends StmtJSON {
-  if: ExprJSON;
-  then: StmtJSON;
-  else: StmtJSON;
-  constructor($if: ExprJSON, $then: StmtJSON, $else: StmtJSON) {
-    super();
-    this.if = $if;
-    this.then = $then;
-    this.else = $else;
-  }
-}
-
-function branch($if: ExprJSON, $then: StmtJSON, $else: StmtJSON) {
-  return new IfStmtJSON($if, $then, $else);
-}
-
-class ClassStmtJSON extends StmtJSON {
-  class: string;
-  methods: FnStmtJSON[];
-  constructor($class: string, methods: FnStmtJSON[]) {
-    super();
-    this.class = $class;
-    this.methods = methods;
-  }
-}
-
-function classDef(classname: string, methods: FnStmtJSON[]) {
-  return new ClassStmtJSON(classname, methods);
-}
-
-class WhileStmtJSON extends StmtJSON {
-  while: ExprJSON;
-  do: StmtJSON;
-  constructor($while: ExprJSON, $do: StmtJSON) {
-    super();
-    this.while = $while;
-    this.do = $do;
-  }
-}
-
-function loop(condition: ExprJSON, body: StmtJSON) {
-  return new WhileStmtJSON(condition, body);
-}
-
-class VarStmtJSON extends StmtJSON {
-  def: [SymJSON, ExprJSON];
-  constructor(sym: SymJSON, value: ExprJSON) {
-    super();
-    this.def = [sym, value];
-  }
-}
-
-function vardef(sym: SymJSON, value: ExprJSON) {
-  return new VarStmtJSON(sym, value);
-}
-
-class ReturnStmtJSON extends StmtJSON {
-  return: ExprJSON;
-  constructor($return: ExprJSON) {
-    super();
-    this.return = $return;
-  }
-}
-
-function ret(returnValue: ExprJSON) {
-  return new ReturnStmtJSON(returnValue);
-}
-
-class PrintStmtJSON extends StmtJSON {
-  print: ExprJSON;
-  constructor(print: ExprJSON) {
-    super();
-    this.print = print;
-  }
-}
-
-function print(printValue: ExprJSON) {
-  return new PrintStmtJSON(printValue);
-}
-
-class FnStmtJSON extends StmtJSON {
-  fn: SymJSON;
-  params: SymJSON[];
-  body: StmtJSON[];
-  constructor(fn: SymJSON, params: SymJSON[], body: StmtJSON[]) {
-    super();
-    this.fn = fn;
-    this.params = params;
-    this.body = body;
-  }
-}
-
-function fnDef(fn: SymJSON, params: SymJSON[], body: StmtJSON[]) {
-  return new FnStmtJSON(fn, params, body);
-}
-
-class ExprStmtJSON extends StmtJSON {
-  expression: ExprJSON;
-  constructor(expression: ExprJSON) {
-    super();
-    this.expression = expression;
-  }
-}
-
-function expr(expression: ExprJSON) {
-  return new ExprStmtJSON(expression);
-}
-
-class BlockJSON extends StmtJSON {
-  block: StmtJSON[];
-  constructor(block: StmtJSON[]) {
-    super();
-    this.block = block;
-  }
-}
-
-function block(body: StmtJSON[]) {
-  return new BlockJSON(body);
-}
-
-abstract class ExprJSON extends MJSON {}
-
-class IntJSON extends ExprJSON {
-  int: number;
-  constructor(value: number) {
-    super();
-    this.int = value;
-  }
-}
-
-function int(value: number) {
-  return new IntJSON(value);
-}
-
-class FloatJSON extends ExprJSON {
-  float: number;
-  constructor(value: number) {
-    super();
-    this.float = value;
-  }
-}
-
-function float(value: number) {
-  return new FloatJSON(value);
-}
-
-class RationalJSON extends ExprJSON {
-  frac: [number, number];
-  constructor(n: number, d: number) {
-    super();
-    this.frac = [n, d];
-  }
-}
-
-function rat(n: number, d: number) {
-  return new RationalJSON(n, d);
-}
-
-class FnJSON extends ExprJSON {
-  fn: ExprJSON;
-  args: ExprJSON[];
-  constructor(op: ExprJSON, args: ExprJSON[]) {
-    super();
-    this.fn = op;
-    this.args = args;
-  }
-}
-
-class SymJSON extends ExprJSON {
-  sym: string;
-  constructor(sym: string) {
-    super();
-    this.sym = sym;
-  }
-}
-
-const sym = (symbol: string) => new SymJSON(symbol);
-
-function fn(op: ExprJSON | string, args: ExprJSON[]) {
-  return new FnJSON(typeof op === "string" ? sym(op) : op, args);
-}
-
-class StrJSON extends ExprJSON {
-  str: string;
-  constructor(str: string) {
-    super();
-    this.str = str;
-  }
-}
-
-function str(value: string) {
-  return new StrJSON(value);
-}
-
-class BoolJSON extends ExprJSON {
-  bool: boolean;
-  constructor(bool: boolean) {
-    super();
-    this.bool = bool;
-  }
-}
-
-function bool(value: boolean) {
-  return new BoolJSON(value);
-}
-
-class NilJSON extends ExprJSON {
-  nil: null;
-  constructor() {
-    super();
-    this.nil = null;
-  }
-}
-
-function nil() {
-  return new NilJSON();
-}
-
-class ConstJSON extends ExprJSON {
-  sym: string;
-  val: number;
-  constructor(sym: string, val: number) {
-    super();
-    this.sym = sym;
-    this.val = val;
-  }
-}
-
-function constant(sym: string, value: number) {
-  return new ConstJSON(sym, value);
 }
 
 // § Nodekind Enum
@@ -2798,15 +2750,15 @@ class SciNum extends Expr {
   toString(): string {
     return this.$value.toString();
   }
-  $value: Scientific_Number;
-  constructor(value: Scientific_Number) {
+  $value: Exponential;
+  constructor(value: Exponential) {
     super();
     this.$value = value;
   }
 }
 
 /** Returns a new scientific number node. */
-function $scinum(value: Scientific_Number) {
+function $scinum(value: Exponential) {
   return new SciNum(value);
 }
 
@@ -4032,7 +3984,6 @@ export function syntax(source: string) {
     }
     const b = STATEMENT();
     if (b.isLeft()) return b;
-    const bodyLine = state.$current.$line;
     let body: Statement = b.unwrap();
     if (ticker !== null) {
       if (isBlockStmt(body)) {
@@ -4140,5 +4091,316 @@ export function syntax(source: string) {
       }
       return right(statements);
     },
+  };
+}
+
+type TypeName =
+  | "nil"
+  | "integer"
+  | "float"
+  | "string"
+  | "bool"
+  | "big_integer"
+  | "fraction"
+  | "exponential"
+  | "error"
+  | "unknown";
+
+function typename(x: PRIMITIVE): TypeName {
+  if (x === null) {
+    return "nil";
+  } else if (typeof x === "number") {
+    if (Number.isInteger(x)) {
+      return "integer";
+    } else {
+      return "float";
+    }
+  } else if (typeof x === "string") {
+    return "string";
+  } else if (typeof x === "boolean") {
+    return "bool";
+  } else if (typeof x === "bigint") {
+    return "big_integer";
+  } else if (x instanceof Fraction) {
+    return "fraction";
+  } else if (x instanceof Exponential) {
+    return "exponential";
+  } else if (x instanceof Err) {
+    return "error";
+  } else {
+    return "unknown";
+  }
+}
+
+class Interpreter implements Visitor<PRIMITIVE> {
+  exec(statements: Statement[]) {
+    try {
+      let result: PRIMITIVE = null;
+      const L = statements.length;
+      for (let i = 0; i < L; i++) {
+        result = this.eval(statements[i]);
+      }
+      return right(result);
+    } catch (error) {
+      return left(error as Err);
+    }
+  }
+  eval(expr: ASTNode): PRIMITIVE {
+    return expr.accept(this);
+  }
+  blockStmt(node: BlockStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  exprStmt(node: ExprStmt): PRIMITIVE {
+    return this.eval(node.$expression);
+  }
+  fnStmt(node: FnStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  ifStmt(node: IfStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  printStmt(node: PrintStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  returnStmt(node: ReturnStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  variableStmt(node: VariableStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  whileStmt(node: WhileStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  classStmt(node: ClassStmt): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  indexExpr(node: IndexExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  algebraString(node: AlgebraString): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  tupleExpr(node: TupleExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  vectorExpr(node: VectorExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  matrixExpr(node: MatrixExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  relationExpr(node: RelationExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  assignmentExpr(node: AssignmentExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  nativeCallExpr(node: NativeCallExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  negExpr(node: NegExpr): PRIMITIVE {
+    const x = this.eval(node.$arg);
+    if (typeof x === "number" || typeof x === "bigint") {
+      return -x;
+    } else if (x instanceof Fraction) {
+      return x.negate();
+    } else if (x instanceof Exponential) {
+      return x.negate();
+    } else {
+      throw runtimeError(
+        `Negation operator "-" cannot be applied to ${typename(x)}`,
+        node.$op.$line
+      );
+    }
+  }
+  posExpr(node: PosExpr): PRIMITIVE {
+    const x = this.eval(node.$arg);
+    if (isNumber(x)) {
+      return +x;
+    } else if (x instanceof Fraction || x instanceof Exponential) {
+      return x;
+    } else {
+      throw runtimeError(
+        `Operator "+" cannot be applied to ${typename(x)}`,
+        node.$op.$line
+      );
+    }
+  }
+  factorialExpr(node: FactorialExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  notExpr(node: NotExpr): PRIMITIVE {
+    const x = this.eval(node.$arg);
+    if (typeof x === "boolean") {
+      return !x;
+    } else {
+      throw runtimeError(
+        `Operator "not" cannot be applied to ${typename(x)}`,
+        node.$op.$line
+      );
+    }
+  }
+  vectorBinex(node: VectorBinex): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  algebraicBinex(node: AlgebraicBinex): PRIMITIVE {
+    let L = this.eval(node.$left) as any;
+    let R = this.eval(node.$right) as any;
+    const op = node.$op.$type;
+    if ((isFraction(L) && isNumber(R)) || (isNumber(L) && isFraction(R))) {
+      L = Fraction.from(L);
+      R = Fraction.from(R);
+    }
+    if (isFraction(L) && isFraction(R)) {
+      switch (op) {
+        case token_type.star:
+          return L.times(R);
+        case token_type.slash:
+          return L.divide(R);
+        case token_type.plus:
+          return L.plus(R);
+        case token_type.minus:
+          return L.minus(R);
+        case token_type.percent:
+          return Fraction.from(percent(L.float(), R.float()));
+        case token_type.rem:
+          throw runtimeError(
+            `Operator "rem" cannot be applied to fractions`,
+            node.$op.$line
+          );
+        case token_type.mod:
+          throw runtimeError(
+            `Operator "mod" cannot be applied to fractions`,
+            node.$op.$line
+          );
+        case token_type.div:
+          throw runtimeError(
+            `Operator "div" cannot be applied to fractions`,
+            node.$op.$line
+          );
+        case token_type.caret:
+          throw runtimeError(
+            `Exponentiation on fractions currently unsupported`,
+            node.$op.$line
+          );
+      }
+    }
+    if (isNumber(L) && isNumber(R)) {
+      switch (op) {
+        case token_type.plus:
+          return L + R;
+        case token_type.star:
+          return L * R;
+        case token_type.caret:
+          return L ** R;
+        case token_type.slash:
+          return L / R;
+        case token_type.minus:
+          return L - R;
+        case token_type.rem:
+          return L % R;
+        case token_type.mod:
+          return mod(L, R);
+        case token_type.percent:
+          return percent(L, R);
+        case token_type.div:
+          return iquot(L, R);
+      }
+    }
+    const o = node.$op.$lexeme;
+    throw runtimeError(
+      `"${o}" cannot be applied to (${typename(L)} × ${typename(R)})`,
+      node.$op.$line
+    );
+  }
+  logicalBinex(node: LogicalBinex): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  callExpr(node: CallExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  parendExpr(node: ParendExpr): PRIMITIVE {
+    return this.eval(node.$inner);
+  }
+  getExpr(node: GetExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  setExpr(node: SetExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  superExpr(node: SuperExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  thisExpr(node: ThisExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  stringConcat(node: StringConcatExpr): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  sym(node: Sym): PRIMITIVE {
+    throw new Error("Method not implemented.");
+  }
+  string(node: StringLit): PRIMITIVE {
+    return node.$value;
+  }
+  bool(node: Bool): PRIMITIVE {
+    return node.$value;
+  }
+  nil(node: Nil): PRIMITIVE {
+    return node.$value;
+  }
+  integer(node: Integer): PRIMITIVE {
+    return node.$value;
+  }
+  float(node: Float): PRIMITIVE {
+    return node.$value;
+  }
+  bigInteger(node: BigInteger): PRIMITIVE {
+    return node.$value;
+  }
+  sciNum(node: SciNum): PRIMITIVE {
+    return node.$value;
+  }
+  frac(node: Frac): PRIMITIVE {
+    return node.$value;
+  }
+  numConst(node: NumConst): PRIMITIVE {
+    return node.$value;
+  }
+}
+
+export function engine() {
+  const interpreter = new Interpreter();
+  const parse = (code: string) => syntax(code).parset();
+  const compile = (code: string) => {
+    const prog = parse(code);
+    if (prog.isLeft()) {
+      return prog.unwrap();
+    }
+    const stmts = prog.unwrap();
+    const out = interpreter.exec(stmts);
+    return out.unwrap();
+  };
+  const tokens = (code: string) => {
+    const prog = lexical(code).stream();
+    if (prog.isLeft()) {
+      return prog.unwrap().toString();
+    } else {
+      return treestring(prog.unwrap());
+    }
+  };
+  const ast = (code: string) => {
+    const prog = syntax(code).parset();
+    if (prog.isLeft()) {
+      return prog.unwrap().toString();
+    } else {
+      return treestring(prog.unwrap());
+    }
+  };
+  return {
+    compile,
+    ast,
+    tokens,
   };
 }

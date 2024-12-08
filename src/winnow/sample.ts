@@ -2497,7 +2497,7 @@ function area2D() {
   return new Area2D();
 }
 
-const CONTEXT = contextual(colorable(BASE));
+const CONTEXT= contextual(colorable(BASE));
 
 // ================================================================== linearized
 interface Linearized {
