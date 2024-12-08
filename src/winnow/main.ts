@@ -3428,6 +3428,7 @@ export function syntax(source: string) {
 
   /** Returns a factorial expression parser. */
   const factorialExpression = (op: Token, node: Expr) => {
+    console.log('true')
     if (op.isType(token_type.bang)) {
       return state.newExpr($factorial(op, node));
     }
@@ -3637,7 +3638,6 @@ export function syntax(source: string) {
 
   /* Parses a native call expression. */
   const ncall = (op: Token) => {
-    const lex = op.$lexeme;
     if (!state.nextIs(token_type.left_paren)) {
       return state.error(`Expected a "(" to open the argument list`, op.$line);
     }
@@ -3826,8 +3826,8 @@ export function syntax(source: string) {
     let lhs = pre(token, $nil());
     if (lhs.isLeft()) return lhs;
     while (minbp < precof(state.$peek.$type)) {
-      if (state.atEnd()) break;
       token = state.next();
+      console.log(token.toString())
       const r = infixRule(token.$type);
       const rhs = r(token, lhs.unwrap());
       if (rhs.isLeft()) return rhs;
