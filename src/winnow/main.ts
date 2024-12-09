@@ -687,162 +687,6 @@ export function randFloat(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
 
-// § Primitives
-/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
-class Fraction {
-  /** The numerator of this fraction. */
-  $n: number;
-  /** The denominator of this fraction. */
-  $d: number;
-  constructor(n: number, d: number) {
-    this.$n = n;
-    this.$d = d;
-  }
-
-  /** Returns this fraction as a string. */
-  toString() {
-    return `${this.$n}|${this.$d}`;
-  }
-
-  /** Negates this fraction. */
-  negate() {
-    return new Fraction(-this.$n, this.$d);
-  }
-
-  /** Returns this fraction times the other fraction. */
-  times(other: Fraction) {
-    return Fraction.simplify(
-      new Fraction(other.$n * this.$n, other.$d * this.$d)
-    );
-  }
-
-  /** Returns this fraction times the other fraction. */
-  divide(other: Fraction) {
-    return Fraction.simplify(
-      new Fraction(this.$n * other.$d, this.$d * other.$n)
-    );
-  }
-
-  /** Returns this fraction plus the other fraction. */
-  plus(other: Fraction) {
-    return Fraction.simplify(
-      new Fraction(this.$n * other.$d + other.$n * this.$d, this.$d * other.$d)
-    );
-  }
-
-  /** Returns this fraction minus the other fraction. */
-  minus(other: Fraction) {
-    return Fraction.simplify(
-      new Fraction(this.$n * other.$d - other.$n * this.$d, this.$d * other.$d)
-    );
-  }
-
-  /** Returns true if this fraction is less than or equal to the other fraction. */
-  lte(other: Fraction) {
-    const thisN = this.$n;
-    const thisD = this.$d;
-    const otherN = other.$n;
-    const otherD = other.$d;
-    return thisN * otherD <= otherN * thisD;
-  }
-
-  /** Returns true if this fraction is less than the other. */
-  lt(other: Fraction) {
-    return this.lte(other) && !this.equals(other);
-  }
-
-  /** Returns true if this fraction is greater than the other. */
-  gt(other: Fraction) {
-    return !this.lte(other);
-  }
-
-  /** Returns true if this fraction is greater than or equal to the other. */
-  gte(other: Fraction) {
-    return this.gt(other) || this.equals(other);
-  }
-
-  /** Returns true if this fraction equals the other fraction. */
-  equals(other: Fraction) {
-    const a = Fraction.simplify(this);
-    const b = Fraction.simplify(other);
-    return a.$n === b.$n && a.$d === b.$d;
-  }
-  float() {
-    return this.$n / this.$d;
-  }
-  /** Simplifies the given fraction. */
-  static simplify(frac: Fraction) {
-    const numerator = frac.$n;
-    const denominator = frac.$d;
-    const sgn = Math.sign(numerator) * Math.sign(denominator);
-    const n = Math.abs(numerator);
-    const d = Math.abs(denominator);
-    const f = gcd(n, d);
-    return new Fraction((sgn * n) / f, d / f);
-  }
-
-  /** Returns the given number as a fraction. */
-  static from(value: number | Fraction) {
-    // We use the method of continued fractions here.
-    if (value instanceof Fraction) {
-      return value;
-    } else if (Number.isInteger(value)) {
-      return new Fraction(value, 1);
-    } else {
-      let eps = 1.0e-15;
-      let x = value;
-      let a = Math.floor(x);
-      let h1 = 1;
-      let h2: number;
-      let k1 = 0;
-      let k2: number;
-      let h = a;
-      let k = 1;
-
-      while (x - a > eps * k * k) {
-        x = 1 / (x - a);
-        a = Math.floor(x);
-        h2 = h1;
-        h1 = h;
-        k2 = k1;
-        k1 = k;
-        h = h2 + a * h1;
-        k = k2 + a * k1;
-      }
-
-      return new Fraction(h, k);
-    }
-  }
-}
-
-/**
- * Returns a new Fraction. Both arguments must be integers.
- * If the arguments are not integers, they will be floored.
- * @param n The numerator of this fraction (must be an integer).
- * @param d The denominator of this fraction (must be an integer).
- * @returns A new instance of a fraction.
- */
-function fraction(n: number, d: number) {
-  const N = Math.floor(n);
-  const D = Math.abs(Math.floor(d));
-  if (n < 0 && d < 0) {
-    return new Fraction(Math.abs(N), Math.abs(D));
-  } else if (n < 0 && d > 0) {
-    return new Fraction(N, D);
-  } else if (n > 0 && d < 0) {
-    return new Fraction(-N, D);
-  } else if (d === 0) {
-    return new Fraction(NaN, NaN);
-  } else {
-    return new Fraction(Math.floor(n), Math.floor(d));
-  }
-}
-
-/** Returns true if the given object is a fraction. */
-function isFraction(u: any): u is Fraction {
-  return u instanceof Fraction;
-}
-
 class Vector<T extends number[] = number[]> {
   $elements: T;
 
@@ -1522,7 +1366,7 @@ type Primitive =
   | boolean
   | bigint
   | Exponential
-  | Fraction
+  | FRACTION
   | Obj
   | Vector
   | Matrix
@@ -2492,6 +2336,1241 @@ export function lexical(code: string) {
 
   return { stream, scan, atEnd };
 }
+
+enum exp {
+  int,
+  float,
+  sym,
+  sum,
+  product,
+  diff,
+  quotient,
+  factorial,
+  fcall,
+  relation,
+  power,
+  bool,
+  nil,
+  parend,
+  fraction,
+}
+
+abstract class Expression {
+  abstract kind(): exp;
+  abstract toString(): string;
+  abstract arglen(): number;
+  abstract argat(i: number): Expression | undefined;
+  abstract isBAE(): boolean;
+  abstract isRNE(): boolean;
+  abstract map(f: (u: Expression) => Expression): Expression;
+  parenLevel: number = 0;
+  parend() {
+    this.parenLevel++;
+    return this;
+  }
+}
+
+type BAE =
+  | INT
+  | FRACTION
+  | SYM
+  | SUM
+  | PRODUCT
+  | DIFF
+  | QUOTIENT
+  | POWER
+  | FACTORIAL
+  | FCALL;
+
+function isBAE(u: Expression): u is BAE {
+  return u.isBAE();
+}
+
+class INT extends Expression {
+  int: number;
+  get $n() {
+    return this.int;
+  }
+  get $d() {
+    return 1;
+  }
+  kind(): exp {
+    return exp.int;
+  }
+  isBAE(): boolean {
+    return true;
+  }
+  isRNE(): boolean {
+    return true;
+  }
+  toString(): string {
+    const out = `${this.int}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  map(f: (u: Expression) => Expression): INT {
+    return this;
+  }
+  constructor(int: number) {
+    super();
+    this.int = int;
+  }
+}
+
+function int(x: number) {
+  return new INT(x);
+}
+
+function isInt(u: Expression): u is INT {
+  return u.kind() === exp.int;
+}
+
+class FLOAT extends Expression {
+  float: number;
+  kind(): exp {
+    return exp.float;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  isBAE(): boolean {
+    return false;
+  }
+  toString(): string {
+    return this.parenLevel ? `(${this.float})` : `${this.float}`;
+  }
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  map(f: (u: Expression) => Expression): FLOAT {
+    return this;
+  }
+  constructor(float: number) {
+    super();
+    this.float = float;
+  }
+}
+
+function float(x: number) {
+  return new FLOAT(x);
+}
+
+function isFloat(u: Expression): u is FLOAT {
+  return u.kind() === exp.float;
+}
+
+class SYM extends Expression {
+  sym: string;
+  kind(): exp {
+    return exp.sym;
+  }
+  isBAE(): boolean {
+    return true;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  toString(): string {
+    return this.parenLevel ? `(${this.sym})` : this.sym;
+  }
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  map(f: (u: Expression) => Expression): SYM {
+    return this;
+  }
+  constructor(sym: string) {
+    super();
+    this.sym = sym;
+  }
+}
+
+function sym(s: string) {
+  return new SYM(s);
+}
+
+function isSym(u: Expression): u is SYM {
+  return u.kind() === exp.sym;
+}
+
+const DNE = sym("UNDEFINED");
+const isDNE = (u: Expression): u is SYM => {
+  return isSym(u) && u.sym === "UNDEFINED";
+};
+
+class SUM extends Expression {
+  f: "+" = "+";
+  args: Expression[];
+  kind(): exp {
+    return exp.sum;
+  }
+  isRNE(): boolean {
+    for (let i = 0; i < this.args.length; i++) {
+      if (!this.args[i].isRNE()) return false;
+    }
+    return true;
+  }
+  isBAE(): boolean {
+    for (let i = 0; i < this.args.length; i++) {
+      if (!this.args[i].isBAE()) return false;
+    }
+    return true;
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" + ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return this.args.length;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): SUM {
+    const args = this.args.map((arg) => f(arg));
+    const out = new SUM(args);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(args: Expression[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function sum(...args: Expression[]) {
+  return new SUM(args);
+  // const operands = [];
+  // for (let i = 0; i < args.length; i++) {
+  //   const arg = args[i];
+  //   if (isSum(arg)) {
+  //     arg.args.forEach((a) => operands.push(a));
+  //   } else {
+  //     operands.push(arg);
+  //   }
+  // }
+  // return new SUM(operands);
+}
+
+function isSum(u: Expression): u is SUM {
+  return u.kind() === exp.sum;
+}
+
+class PRODUCT extends Expression {
+  f: "*" = "*";
+  args: Expression[];
+  isRNE(): boolean {
+    for (let i = 0; i < this.args.length; i++) {
+      if (!this.args[i].isRNE()) return false;
+    }
+    return true;
+  }
+  isBAE(): boolean {
+    for (let i = 0; i < this.args.length; i++) {
+      if (!this.args[i].isBAE()) return false;
+    }
+    return true;
+  }
+  kind(): exp {
+    return exp.product;
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" * ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return this.args.length;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): PRODUCT {
+    const args = this.args.map((arg) => f(arg));
+    const out = new PRODUCT(args);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(args: Expression[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function prod(...args: Expression[]) {
+  return new PRODUCT(args);
+  // const operands = [];
+  // for (let i = 0; i < args.length; i++) {
+  //   const arg = args[i];
+  //   if (isProduct(arg)) {
+  //     arg.args.forEach((a) => operands.push(a));
+  //   } else {
+  //     operands.push(arg);
+  //   }
+  // }
+  // return new PRODUCT(operands);
+}
+
+function isProduct(u: Expression): u is PRODUCT {
+  return u.kind() === exp.product;
+}
+
+class DIFF extends Expression {
+  f: "-" = "-";
+  args: [Expression, Expression];
+  isBAE(): boolean {
+    return this.left().isBAE() && this.right().isBAE();
+  }
+  isRNE(): boolean {
+    return this.left().isRNE() && this.right().isRNE();
+  }
+  kind(): exp {
+    return exp.diff;
+  }
+  left() {
+    return this.args[0];
+  }
+  right() {
+    return this.args[1];
+  }
+  toString(): string {
+    const L = this.left().toString();
+    const R = this.right().toString();
+    const out = `${L} - ${R}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 2;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): DIFF {
+    const left = f(this.left());
+    const right = f(this.right());
+    const out = new DIFF(left, right);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(left: Expression, right: Expression) {
+    super();
+    this.args = [left, right];
+  }
+}
+
+function diff(left: Expression, right: Expression) {
+  return new DIFF(left, right);
+}
+
+function isDiff(u: Expression): u is DIFF {
+  return u.kind() === exp.diff;
+}
+
+class QUOTIENT extends Expression {
+  f: "/" = "/";
+  args: [Expression, Expression];
+  kind(): exp {
+    return exp.quotient;
+  }
+  isRNE(): boolean {
+    return this.left().isRNE() && this.right().isRNE();
+  }
+  isBAE(): boolean {
+    return this.left().isBAE() && this.right().isBAE();
+  }
+  left() {
+    return this.args[0];
+  }
+  right() {
+    return this.args[1];
+  }
+  toString(): string {
+    const L = this.left().toString();
+    const R = this.right().toString();
+    const out = `${L} / ${R}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 2;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    const left = f(this.left());
+    const right = f(this.right());
+    const out = new QUOTIENT(left, right);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(left: Expression, right: Expression) {
+    super();
+    this.args = [left, right];
+  }
+}
+
+function quot(left: Expression, right: Expression) {
+  return new QUOTIENT(left, right);
+}
+
+function isQuotient(u: Expression): u is QUOTIENT {
+  return u.kind() === exp.quotient;
+}
+
+class POWER extends Expression {
+  f: "^" = "^";
+  args: [Expression, Expression];
+  kind(): exp {
+    return exp.power;
+  }
+  isRNE(): boolean {
+    return this.left().isRNE() && isInt(this.right());
+  }
+  isBAE(): boolean {
+    return this.left().isBAE() && this.right().isBAE();
+  }
+  arg() {
+    return this.args[0];
+  }
+  toString(): string {
+    const L = this.left().toString();
+    const R = this.right().toString();
+    const out = `${L}^${R}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  left() {
+    return this.args[0];
+  }
+  right() {
+    return this.args[1];
+  }
+  arglen(): number {
+    return 2;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    const left = f(this.left());
+    const right = f(this.right());
+    const out = new POWER(left, right);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(left: Expression, right: Expression) {
+    super();
+    this.args = [left, right];
+  }
+}
+
+function pow(left: Expression, right: Expression) {
+  return new POWER(left, right);
+}
+
+function isPower(u: Expression): u is POWER {
+  return u.kind() === exp.power;
+}
+
+// § Primitives
+/** An object corresponding to a number of the form `n/d`, where `n` and `d` are integers. */
+class FRACTION extends Expression {
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  kind(): exp {
+    return exp.fraction;
+  }
+  isRNE(): boolean {
+    return true;
+  }
+  isBAE(): boolean {
+    return true;
+  }
+  map(f: (u: Expression) => Expression): FRACTION {
+    return this;
+  }
+
+  /** The numerator of this fraction. */
+  $n: number;
+  /** The denominator of this fraction. */
+  $d: number;
+  constructor(n: number, d: number) {
+    super();
+    this.$n = n;
+    this.$d = d;
+  }
+
+  /** Returns this fraction as a string. */
+  toString() {
+    const out = `${this.$n}|${this.$d}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+
+  /** Negates this fraction. */
+  negate() {
+    return new FRACTION(-this.$n, this.$d);
+  }
+
+  /** Returns this fraction times the other fraction. */
+  times(other: FRACTION) {
+    return FRACTION.simplify(
+      new FRACTION(other.$n * this.$n, other.$d * this.$d)
+    );
+  }
+
+  /** Returns this fraction times the other fraction. */
+  divide(other: FRACTION) {
+    return FRACTION.simplify(
+      new FRACTION(this.$n * other.$d, this.$d * other.$n)
+    );
+  }
+
+  /** Returns this fraction plus the other fraction. */
+  plus(other: FRACTION) {
+    return FRACTION.simplify(
+      new FRACTION(this.$n * other.$d + other.$n * this.$d, this.$d * other.$d)
+    );
+  }
+
+  /** Returns this fraction minus the other fraction. */
+  minus(other: FRACTION) {
+    return FRACTION.simplify(
+      new FRACTION(this.$n * other.$d - other.$n * this.$d, this.$d * other.$d)
+    );
+  }
+
+  /** Returns true if this fraction is less than or equal to the other fraction. */
+  lte(other: FRACTION) {
+    const thisN = this.$n;
+    const thisD = this.$d;
+    const otherN = other.$n;
+    const otherD = other.$d;
+    return thisN * otherD <= otherN * thisD;
+  }
+
+  /** Returns true if this fraction is less than the other. */
+  lt(other: FRACTION) {
+    return this.lte(other) && !this.equals(other);
+  }
+
+  /** Returns true if this fraction is greater than the other. */
+  gt(other: FRACTION) {
+    return !this.lte(other);
+  }
+
+  /** Returns true if this fraction is greater than or equal to the other. */
+  gte(other: FRACTION) {
+    return this.gt(other) || this.equals(other);
+  }
+
+  /** Returns true if this fraction equals the other fraction. */
+  equals(other: FRACTION) {
+    const a = FRACTION.simplify(this);
+    const b = FRACTION.simplify(other);
+    return a.$n === b.$n && a.$d === b.$d;
+  }
+  float() {
+    return this.$n / this.$d;
+  }
+  /** Simplifies the given fraction. */
+  static simplify(frac: FRACTION) {
+    const numerator = frac.$n;
+    const denominator = frac.$d;
+    const sgn = Math.sign(numerator) * Math.sign(denominator);
+    const n = Math.abs(numerator);
+    const d = Math.abs(denominator);
+    const f = gcd(n, d);
+    return new FRACTION((sgn * n) / f, d / f);
+  }
+
+  /** Returns the given number as a fraction. */
+  static from(value: number | FRACTION) {
+    // We use the method of continued fractions here.
+    if (value instanceof FRACTION) {
+      return value;
+    } else if (Number.isInteger(value)) {
+      return new FRACTION(value, 1);
+    } else {
+      let eps = 1.0e-15;
+      let x = value;
+      let a = Math.floor(x);
+      let h1 = 1;
+      let h2: number;
+      let k1 = 0;
+      let k2: number;
+      let h = a;
+      let k = 1;
+
+      while (x - a > eps * k * k) {
+        x = 1 / (x - a);
+        a = Math.floor(x);
+        h2 = h1;
+        h1 = h;
+        k2 = k1;
+        k1 = k;
+        h = h2 + a * h1;
+        k = k2 + a * k1;
+      }
+
+      return new FRACTION(h, k);
+    }
+  }
+}
+
+/**
+ * Returns a new FRACTION. Both arguments must be integers.
+ * If the arguments are not integers, they will be floored.
+ * @param n The numerator of this fraction (must be an integer).
+ * @param d The denominator of this fraction (must be an integer).
+ * @returns A new instance of a fraction.
+ */
+function fraction(n: number, d: number) {
+  const N = Math.floor(n);
+  const D = Math.abs(Math.floor(d));
+  if (n < 0 && d < 0) {
+    return new FRACTION(Math.abs(N), Math.abs(D));
+  } else if (n < 0 && d > 0) {
+    return new FRACTION(N, D);
+  } else if (n > 0 && d < 0) {
+    return new FRACTION(-N, D);
+  } else if (d === 0) {
+    return new FRACTION(NaN, NaN);
+  } else {
+    return new FRACTION(Math.floor(n), Math.floor(d));
+  }
+}
+
+/** Returns true if the given object is a fraction. */
+function isFraction(u: any): u is FRACTION {
+  return u instanceof FRACTION;
+}
+
+class FACTORIAL extends Expression {
+  f: "!" = "!";
+  args: [Expression];
+  kind(): exp {
+    return exp.factorial;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  isBAE(): boolean {
+    return this.arg().isBAE();
+  }
+  arg() {
+    return this.args[0];
+  }
+  toString(): string {
+    const out = `${this.arg().toString()}!`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 1;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): FACTORIAL {
+    const arg = f(this.arg());
+    const out = new FACTORIAL(arg);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(arg: Expression) {
+    super();
+    this.args = [arg];
+  }
+}
+
+function fact(arg: Expression) {
+  return new FACTORIAL(arg);
+}
+
+function isFact(u: Expression): u is FACTORIAL {
+  return u.kind() === exp.factorial;
+}
+
+class FCALL extends Expression {
+  f: string;
+  args: Expression[];
+  isRNE(): boolean {
+    return false;
+  }
+  kind(): exp {
+    return exp.fcall;
+  }
+  isBAE(): boolean {
+    for (let i = 0; i < this.args.length; i++) {
+      if (!this.args[i].isBAE()) return false;
+    }
+    return true;
+  }
+  toString(): string {
+    const args = this.args.map((arg) => arg.toString()).join(",");
+    const out = `${this.f}(${args})`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return this.args.length;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    const args = this.args.map((arg) => f(arg));
+    const out = new FCALL(this.f, args);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(f: string, args: Expression[]) {
+    super();
+    this.f = f;
+    this.args = args;
+  }
+}
+
+function fn(name: string, args: Expression[]) {
+  return new FCALL(name, args);
+}
+
+function isFCall(u: Expression): u is FCALL {
+  return u.kind() === exp.fcall;
+}
+
+type RELATIONOP = "<" | ">" | "==" | "<=" | ">=" | "!=";
+
+class RELATION extends Expression {
+  f: RELATIONOP;
+  args: [Expression, Expression];
+  kind(): exp {
+    return exp.relation;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  isBAE(): boolean {
+    return false;
+  }
+  toString(): string {
+    const left = this.left().toString();
+    const right = this.right().toString();
+    const out = `${left} ${this.f} ${right}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  left() {
+    return this.args[0];
+  }
+  right() {
+    return this.args[1];
+  }
+  arglen(): number {
+    return this.args.length;
+  }
+  argat(i: number): Expression | undefined {
+    return this.args[i];
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    const left = f(this.left());
+    const right = f(this.right());
+    const out = new RELATION(left, this.f, right);
+    out.parenLevel = this.parenLevel;
+    return out;
+  }
+  constructor(left: Expression, op: RELATIONOP, right: Expression) {
+    super();
+    this.f = op;
+    this.args = [left, right];
+  }
+}
+
+function relate(left: Expression, op: RELATIONOP, right: Expression) {
+  return new RELATION(left, op, right);
+}
+
+function isRelation(u: Expression): u is RELATION {
+  return u.kind() === exp.relation;
+}
+
+class BOOL extends Expression {
+  bool: boolean;
+  kind(): exp {
+    return exp.bool;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  isBAE(): boolean {
+    return false;
+  }
+  toString(): string {
+    const out = `${this.bool}`;
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    return this;
+  }
+  constructor(bool: boolean) {
+    super();
+    this.bool = bool;
+  }
+}
+
+function bool(value: boolean) {
+  return new BOOL(value);
+}
+
+function isBool(u: Expression): u is BOOL {
+  return u.kind() === exp.bool;
+}
+
+class NIL extends Expression {
+  nil: null;
+  kind(): exp {
+    return exp.nil;
+  }
+  isRNE(): boolean {
+    return false;
+  }
+  isBAE(): boolean {
+    return false;
+  }
+  toString(): string {
+    const out = "nil";
+    return this.parenLevel ? `(${out})` : out;
+  }
+  arglen(): number {
+    return 0;
+  }
+  argat(i: number): Expression | undefined {
+    return undefined;
+  }
+  map(f: (u: Expression) => Expression): Expression {
+    return this;
+  }
+  constructor() {
+    super();
+    this.nil = null;
+  }
+}
+
+function nil() {
+  return new NIL();
+}
+
+function isNil(u: Expression): u is NIL {
+  return u.kind() === exp.nil;
+}
+
+function parsx(source: string) {
+  let $current = 0;
+  let _tkns = lexical(source).stream();
+  if (_tkns.isLeft()) return _tkns;
+  const $tokens = _tkns.unwrap();
+
+  const consume = (type: token_type, message: string) => {
+    if (check(type)) return advance();
+    throw syntaxError(message, peek().$line);
+  };
+
+  const peek = () => {
+    return $tokens[$current];
+  };
+
+  const previous = () => {
+    return $tokens[$current - 1];
+  };
+
+  const atEnd = () => {
+    return $current >= $tokens.length;
+  };
+
+  const advance = () => {
+    if (!atEnd()) $current++;
+    return previous();
+  };
+
+  const check = (type: token_type) => {
+    if (atEnd()) return false;
+    return peek().$type === type;
+  };
+
+  const match = (...types: token_type[]) => {
+    for (let i = 0; i < types.length; i++) {
+      const type = types[i];
+      if (check(type)) {
+        advance();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const expression = (): Expression => {
+    return equality();
+  };
+
+  const equality = (): Expression => {
+    let left = compare();
+    while (match(token_type.bang_equal, token_type.equal_equal)) {
+      let op = previous();
+      let right = compare();
+      left = relate(left, op.$lexeme as RELATIONOP, right);
+    }
+    return left;
+  };
+
+  const compare = (): Expression => {
+    let left = addition();
+    while (
+      match(
+        token_type.greater,
+        token_type.greater_equal,
+        token_type.less,
+        token_type.less_equal
+      )
+    ) {
+      let op = previous();
+      let right = addition();
+      left = relate(left, op.$lexeme as RELATIONOP, right);
+    }
+    return left;
+  };
+
+  const addition = (): Expression => {
+    let left = subtraction();
+    while (match(token_type.plus)) {
+      let right = subtraction();
+      left = sum(left, right);
+    }
+    return left;
+  };
+
+  const subtraction = (): Expression => {
+    let left = product();
+    while (match(token_type.minus)) {
+      let right = product();
+      left = diff(left, right);
+    }
+    return left;
+  };
+
+  const product = (): Expression => {
+    let left = imul();
+    while (match(token_type.star)) {
+      let right = imul();
+      left = prod(left, right);
+    }
+    return left;
+  };
+
+  const imul = () => {
+    let left = quotient();
+    if (
+      (isInt(left) || isFloat(left)) &&
+      (check(token_type.symbol) || check(token_type.native))
+    ) {
+      let right = quotient();
+      left = prod(left, right);
+    }
+    return left;
+  };
+
+  const quotient = (): Expression => {
+    let left = power();
+    while (match(token_type.slash)) {
+      let right = power();
+      left = quot(left, right);
+    }
+    return left;
+  };
+
+  const power = (): Expression => {
+    let left = negate();
+    while (match(token_type.caret)) {
+      let right = negate();
+      left = pow(left, right);
+    }
+    return left;
+  };
+
+  const negate = (): Expression => {
+    if (match(token_type.minus)) {
+      let right = factorial();
+      if (isInt(right)) {
+        right = int(-right.int);
+        return right;
+      } else if (isFloat(right)) {
+        right = float(-right.float);
+        return right;
+      } else {
+        return prod(int(-1), right);
+      }
+    }
+    return factorial();
+  };
+
+  const factorial = () => {
+    let left = call();
+    if (match(token_type.bang)) {
+      left = fact(left);
+    }
+    return left;
+  };
+
+  const call = (): Expression => {
+    let left = primary();
+    while (true) {
+      if (match(token_type.left_paren)) {
+        left = finishCall(left);
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+
+  const finishCall = (callee: Expression) => {
+    const args: Expression[] = [];
+    if (!check(token_type.right_paren)) {
+      do {
+        args.push(expression());
+      } while (match(token_type.comma));
+    }
+    consume(token_type.right_paren, 'Expected ")" after arguments');
+    if (!isSym(callee)) {
+      throw syntaxError(
+        "Expected a symbol for function call",
+        previous().$line
+      );
+    }
+    return fn(callee.sym, args);
+  };
+
+  const primary = (): Expression => {
+    if (match(token_type.boolean)) return bool(previous().$literal as boolean);
+    if (match(token_type.nil)) return nil();
+    if (match(token_type.integer)) return int(previous().$literal as number);
+    if (match(token_type.float)) return float(previous().$literal as number);
+    if (match(token_type.symbol)) return sym(previous().$lexeme);
+    if (match(token_type.native)) return sym(previous().$lexeme);
+    if (match(token_type.fraction)) return previous().$literal as FRACTION;
+    if (match(token_type.left_paren)) {
+      let expr = expression();
+      consume(token_type.right_paren, `Expected a closing ")"`);
+      expr = expr.parend();
+      if (check(token_type.left_paren)) {
+        let right = expression();
+        return prod(expr, right);
+      }
+      return expr;
+    }
+    throw syntaxError(`Unrecognized lexeme: ${peek().$lexeme}.`, peek().$line);
+  };
+
+  const run = () => {
+    try {
+      const result = expression();
+      return right(result);
+    } catch (error) {
+      return left(error as Err);
+    }
+  };
+
+  return run();
+}
+
+function setUnion<T>(A: Set<T>, B: Set<T>) {
+  const union = new Set(A);
+  for (const elem of B) {
+    union.add(elem);
+  }
+  return union;
+}
+const cset = <T>(...elements: T[]) => new Set(elements);
+
+/** Returns a set of the complete subexpressions of the given expression `v`. */
+function subexs(v: string) {
+  const E = parsx(v);
+  if (E.isLeft()) return cset(E.unwrap().toString());
+  const u = E.unwrap();
+  if (isInt(u) || isSym(u) || isFloat(u)) {
+    return cset(u.toString());
+  } else {
+    let s = cset(u.toString());
+    const opcount = u.arglen();
+    for (let i = 0; i < opcount; i++) {
+      let o = u.argat(i);
+      if (o === undefined) return s;
+      const x = parsx(o.toString());
+      if (x.isLeft()) return s;
+      s = setUnion(s, subexs(x.unwrap().toString()));
+    }
+    return s;
+  }
+}
+
+const reduceRNE = (u: INT | FRACTION) => {
+  if (isInt(u)) {
+    return u;
+  } else {
+    const n = u.$n;
+    const d = u.$d;
+    if (mod(n, d) === 0) {
+      return int(iquot(n, d));
+    } else {
+      const g = gcd(n, d);
+      if (d > 0) {
+        return fraction(iquot(n, g), iquot(d, g));
+      } else if (d < 0) {
+        return fraction(iquot(-n, g), iquot(-d, g));
+      } else {
+        return DNE;
+      }
+    }
+  }
+};
+
+function srne(expr: string | Expression) {
+  const evalSum = (v: INT | FRACTION, w: INT | FRACTION) => {
+    if (w.$n === 0) {
+      return DNE;
+    } else {
+      return fraction(v.$n * w.$d + w.$n * v.$d, v.$d * w.$d);
+    }
+  };
+  const evalProd = (v: INT | FRACTION, w: INT | FRACTION) => {
+    if (w.$n === 0) {
+      return DNE;
+    } else {
+      return fraction(v.$n * w.$n, v.$d * w.$d);
+    }
+  };
+  const evalDiff = (v: INT | FRACTION, w: INT | FRACTION) => {
+    if (w.$n === 0) {
+      return DNE;
+    } else {
+      return fraction(v.$n * w.$d - w.$n * v.$d, w.$d * v.$d);
+    }
+  };
+  const evalQuot = (v: INT | FRACTION, w: INT | FRACTION) => {
+    if (w.$n === 0) {
+      return DNE;
+    } else {
+      return fraction(v.$n * w.$d, w.$n * w.$d);
+    }
+  };
+
+  const evalPower = (v: INT | FRACTION, n: INT): SYM | INT | FRACTION => {
+    if (v.$n !== 0) {
+      if (n.int > 0) {
+        const s = evalPower(v, int(n.int - 1));
+        if (isDNE(s)) return DNE;
+        return evalProd(s, v);
+      } else if (n.int === 0) {
+        return int(1);
+      } else if (n.int === -1) {
+        return fraction(v.$d, v.$n);
+      } else if (n.int < -1) {
+        const N = v.$n ** Math.abs(n.int);
+        const D = v.$d ** Math.abs(n.int);
+        return fraction(D, N);
+      }
+    } else if (v.$n === 0) {
+      if (n.int >= 1) {
+        return int(0);
+      } else if (n.int <= 0) {
+        return DNE;
+      }
+    }
+    return DNE;
+  };
+  const srne_rec = (u: Expression): SYM | INT | FRACTION => {
+    if (isInt(u)) {
+      return u;
+    } else if (isFraction(u)) {
+      if (u.$d === 0) {
+        return DNE;
+      } else {
+        return u;
+      }
+    } else if (u.arglen() === 1) {
+      let v = srne_rec(u.argat(0) as Expression);
+      if (isDNE(v)) {
+        return DNE;
+      } else if (isSum(u)) {
+        return v;
+      } else if (isDiff(u)) {
+        return evalProd(int(-1), v);
+      }
+    } else if (u.arglen() === 2) {
+      if (isSum(u) || isProduct(u) || isDiff(u) || isQuotient(u)) {
+        const v = srne_rec(u.argat(0) as Expression);
+        const w = srne_rec(u.argat(1) as Expression);
+        if (isDNE(v) || isDNE(w)) {
+          return DNE;
+        } else {
+          if (isSum(u)) {
+            return evalSum(v, w);
+          } else if (isDiff(u)) {
+            return evalDiff(v, w);
+          } else if (isProduct(u)) {
+            return evalProd(v, w);
+          } else if (isQuotient(u)) {
+            return evalQuot(v, w);
+          }
+        }
+      } else if (isPower(u)) {
+        const v = srne_rec(u.argat(0) as Expression);
+        if (isDNE(v)) {
+          return DNE;
+        } else {
+          return evalPower(v, u.argat(1) as INT);
+        }
+      }
+    }
+    return DNE;
+  };
+
+  if (typeof expr === "string") {
+    const e = parsx(expr);
+    if (e.isLeft()) return DNE;
+    expr = e.unwrap();
+  }
+
+  if (!expr.isRNE()) {
+    return DNE;
+  }
+  let v = srne_rec(expr);
+  if (isDNE(v)) {
+    return DNE;
+  }
+  return reduceRNE(v);
+}
+
+const k = `5|6 - 3|4`;
+const h = treestring(parsx(k));
+const j = srne(k);
+console.log(j);
+console.log(h);
 
 // § Nodekind Enum
 enum nodekind {
@@ -3502,15 +4581,15 @@ class Frac extends Expr {
   toString(): string {
     return this.$value.toString();
   }
-  $value: Fraction;
-  constructor(value: Fraction) {
+  $value: FRACTION;
+  constructor(value: FRACTION) {
     super();
     this.$value = value;
   }
 }
 
 /* Returns a new fraction node. */
-function $frac(value: Fraction) {
+function $frac(value: FRACTION) {
   return new Frac(value);
 }
 
@@ -4339,7 +5418,7 @@ export function syntax(source: string) {
 
   /** Parses a fraction literal. */
   const fract = (op: Token) => {
-    if (op.isType(token_type.fraction) && op.$literal instanceof Fraction) {
+    if (op.isType(token_type.fraction) && op.$literal instanceof FRACTION) {
       return state.newExpr($frac(op.$literal));
     } else {
       return state.error(`Unexpected fraction`, op.$line);
@@ -4856,7 +5935,7 @@ function typename(x: Primitive): TypeName {
     return "bool";
   } else if (typeof x === "bigint") {
     return "big_integer";
-  } else if (x instanceof Fraction) {
+  } else if (x instanceof FRACTION) {
     return "fraction";
   } else if (x instanceof Exponential) {
     return "exponential";
@@ -5691,8 +6770,8 @@ class Compiler implements Visitor<Primitive> {
     let R = this.eval(node.$right) as any;
     const op = node.$op;
     if ((isFraction(L) && isNumber(R)) || (isNumber(L) && isFraction(R))) {
-      L = Fraction.from(L);
-      R = Fraction.from(R);
+      L = FRACTION.from(L);
+      R = FRACTION.from(R);
     }
     if (isFraction(L) && isFraction(R)) {
       switch (op.$type) {
@@ -5806,7 +6885,7 @@ class Compiler implements Visitor<Primitive> {
     const x = this.eval(node.$arg);
     if (typeof x === "number" || typeof x === "bigint") {
       return -x;
-    } else if (x instanceof Fraction) {
+    } else if (x instanceof FRACTION) {
       return x.negate();
     } else if (x instanceof Exponential) {
       return x.negate();
@@ -5822,7 +6901,7 @@ class Compiler implements Visitor<Primitive> {
     const x = this.eval(node.$arg);
     if (isNumber(x)) {
       return +x;
-    } else if (x instanceof Fraction || x instanceof Exponential) {
+    } else if (x instanceof FRACTION || x instanceof Exponential) {
       return x;
     } else {
       throw runtimeError(
@@ -5884,8 +6963,8 @@ class Compiler implements Visitor<Primitive> {
     let R = this.eval(node.$right) as any;
     const op = node.$op.$type;
     if ((isFraction(L) && isNumber(R)) || (isNumber(L) && isFraction(R))) {
-      L = Fraction.from(L);
-      R = Fraction.from(R);
+      L = FRACTION.from(L);
+      R = FRACTION.from(R);
     }
     if (isFraction(L) && isFraction(R)) {
       switch (op) {
@@ -5898,7 +6977,7 @@ class Compiler implements Visitor<Primitive> {
         case token_type.minus:
           return L.minus(R);
         case token_type.percent:
-          return Fraction.from(percent(L.float(), R.float()));
+          return FRACTION.from(percent(L.float(), R.float()));
         case token_type.rem:
           throw runtimeError(
             `Operator "rem" cannot be applied to fractions`,
