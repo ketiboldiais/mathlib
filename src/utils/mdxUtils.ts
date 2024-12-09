@@ -9,6 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import Terminal from "@/components/Terminal";
 import REPL from "@/components/REPL";
+import Fig from "@/components/Fig";
 
 export type PostsFrontMatter = {
     title: string;
@@ -22,8 +23,9 @@ export const getCompiledMDX = cache(async (postSlug: string) => {
     return compileMDX<PostsFrontMatter>({
         source, 
         components: {
-            Terminal: Terminal,
-            REPL: REPL,
+            Terminal,
+            REPL,
+            Fig
         },
         options: {
             mdxOptions: {
