@@ -1,7 +1,6 @@
 import { getPostFilePaths, getCompiledMDX } from "@/utils/mdxUtils";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
-import { getLatestPostSummaries } from "@/utils/mdxUtils";
 
 export const generateStaticParams = async () => {
     const postFilePaths = await getPostFilePaths();

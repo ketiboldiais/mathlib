@@ -1,3 +1,6 @@
+
+
+
 const Fig = () => {
   const width = 200;
   const height = 200;
@@ -24,9 +27,13 @@ const Fig = () => {
   const _my = 50;
 
   return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio={par} xmlns="http://www.w3.org/2000/svg">
-  <circle cx="50" cy="50" r="2" />
-</svg>
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio={par}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="50" cy="50" r="2" />
+    </svg>
     // <div style={boxcss}>
     //   <svg viewBox={viewbox} preserveAspectRatio={par} style={svgcss}>
     //     <circle cx={50} cy={50} radius={100}/>

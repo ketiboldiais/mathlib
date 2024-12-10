@@ -1,5 +1,6 @@
 // § Utility Functions
 /** Returns a pretty-print tree of the given Object `Obj`. */
+const clog = console.log;
 export function treestring<T extends Object>(
   Obj: T,
   cbfn?: (node: any) => void
@@ -526,6 +527,7 @@ type ErrorType =
   | "type-error"
   | "runtime-error"
   | "environment-error"
+  | "algebra-error"
   | "resolver-error";
 
 // § Error Handling
@@ -567,6 +569,8 @@ const resolverError = errorFactory("resolver-error");
 
 /** Returns a new environment error. */
 const envError = errorFactory("environment-error");
+
+const algebraError = (message: string) => new Err(message, "algebra-error", 0);
 
 /** Returns true if the given expression u is an Err object. */
 export function isErr(u: any): u is Err {
@@ -2497,6 +2501,1061 @@ function isFraction(u: any): u is FRACTION {
   return u instanceof FRACTION;
 }
 
+function cons<T>(list: T[]) {
+  if (list.length === 0) {
+    throw runtimeError("Called cons on empty list", 0);
+  }
+  return list[0];
+}
+
+function cdr<T>(list: T[]) {
+  if (list.length === 0) {
+    return [];
+  }
+  if (list.length === 1) {
+    return list;
+  }
+  const out = [];
+  for (let i = 1; i < list.length; i++) {
+    out.push(list[i]);
+  }
+  return out;
+}
+
+enum expression_type {
+  relation,
+  int,
+  float64,
+  fraction,
+  boolean,
+  symbol,
+  sum,
+  difference,
+  product,
+  quotient,
+  power,
+  function,
+  call,
+  undefined,
+}
+
+abstract class MathObj {
+  parenLevel: number = 0;
+  parend() {
+    this.parenLevel++;
+    return this;
+  }
+  abstract kind(): expression_type;
+  abstract equals(other: MathObj): boolean;
+  abstract toString(): string;
+  abstract map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this;
+}
+
+type RelationOperator = "=" | "<" | ">" | "<=" | ">=" | "!=";
+
+function argsEqual(a: MathObj[], b: MathObj[]) {
+  if (a.length !== b.length) return false;
+  if (a.length === 1 && b.length === 1) return a[0].equals(b[0]);
+  if (a.length === 0 && b.length === 0) return true;
+  if (a.length === 0) return false;
+  if (b.length === 0) return false;
+  if (a[0].equals(b[0])) return argsEqual(cdr(a), cdr(b));
+  return false;
+}
+
+class Relation extends MathObj {
+  kind(): expression_type {
+    return expression_type.relation;
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(` ${this.op} `);
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: RelationOperator;
+  args: MathObj[];
+  equals(other: MathObj): boolean {
+    if (!isRelation(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  constructor(op: RelationOperator, args: MathObj[]) {
+    super();
+    this.op = op;
+    this.args = args;
+  }
+}
+
+function relate(op: RelationOperator, args: MathObj[]) {
+  return new Relation(op, args);
+}
+
+function isRelation(u: MathObj): u is Relation {
+  return u.kind() === expression_type.relation;
+}
+
+class Boolean extends MathObj {
+  kind(): expression_type {
+    return expression_type.boolean;
+  }
+  equals(other: MathObj): boolean {
+    if (!isBool(other)) {
+      return false;
+    } else {
+      return other.bool === this.bool;
+    }
+  }
+  toString(): string {
+    return `${this.bool}`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  bool: boolean;
+  constructor(value: boolean) {
+    super();
+    this.bool = value;
+  }
+}
+function bool(value: boolean) {
+  return new Boolean(value);
+}
+function isBool(u: MathObj): u is Boolean {
+  return u.kind() === expression_type.boolean;
+}
+
+abstract class Numeric extends MathObj {}
+
+class Int extends Numeric {
+  kind(): expression_type {
+    return expression_type.int;
+  }
+  equals(other: MathObj): boolean {
+    if (!isInt(other)) {
+      return false;
+    } else {
+      return this.int === other.int;
+    }
+  }
+  toString(): string {
+    return `${this.int}`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  int: number;
+  constructor(int: number) {
+    super();
+    this.int = int;
+  }
+  get denominator() {
+    return int(1);
+  }
+  get numerator() {
+    return int(this.int);
+  }
+}
+
+function int(value: number) {
+  return new Int(value);
+}
+
+function isInt(u: MathObj): u is Int {
+  return u.kind() === expression_type.int;
+}
+
+class Float64 extends Numeric {
+  kind(): expression_type {
+    return expression_type.float64;
+  }
+  equals(other: MathObj): boolean {
+    if (!isFloat64(other)) {
+      return false;
+    } else {
+      return this.float === other.float;
+    }
+  }
+  toString(): string {
+    return `${this.float}`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  float: number;
+  constructor(value: number) {
+    super();
+    this.float = value;
+  }
+}
+
+function float64(value: number) {
+  return new Float64(value);
+}
+
+function isFloat64(u: MathObj): u is Float64 {
+  return u.kind() === expression_type.float64;
+}
+
+class Sym extends MathObj {
+  kind(): expression_type {
+    return expression_type.symbol;
+  }
+  equals(other: MathObj): boolean {
+    if (!isSym(other)) {
+      return false;
+    } else {
+      return this.sym === other.sym;
+    }
+  }
+  toString(): string {
+    return this.sym;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  sym: string;
+  constructor(sym: string) {
+    super();
+    this.sym = sym;
+  }
+}
+
+class Undefined extends MathObj {
+  kind(): expression_type {
+    return expression_type.undefined;
+  }
+  equals(other: MathObj): boolean {
+    return isUndefined(other);
+  }
+  toString(): string {
+    return this.sym;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  sym: "UNDEFINED";
+  constructor() {
+    super();
+    this.sym = "UNDEFINED";
+  }
+}
+function UNDEFINED() {
+  return new Undefined();
+}
+function isUndefined(u: MathObj): u is Undefined {
+  return u.kind() === expression_type.undefined;
+}
+
+function sym(str: string) {
+  return new Sym(str);
+}
+
+function isSym(u: MathObj): u is Sym {
+  return u.kind() === expression_type.symbol;
+}
+
+class Fraction extends MathObj {
+  kind(): expression_type {
+    return expression_type.fraction;
+  }
+  equals(other: MathObj): boolean {
+    if (!isFrac(other)) {
+      return false;
+    } else {
+      return (
+        this.numerator.equals(other.numerator) &&
+        this.denominator.equals(other.denominator)
+      );
+    }
+  }
+  toString(): string {
+    return `${this.numerator.int}|${this.denominator.int}`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  public readonly numerator: Int;
+  public readonly denominator: Int;
+  constructor(numerator: Int, denominator: Int) {
+    super();
+    this.numerator = numerator;
+    this.denominator = denominator;
+  }
+}
+
+function frac(a: Int, b: Int) {
+  return new Fraction(a, b);
+}
+
+function isFrac(u: MathObj): u is Fraction {
+  return u.kind() === expression_type.fraction;
+}
+
+class Sum extends MathObj {
+  kind(): expression_type {
+    return expression_type.sum;
+  }
+  equals(other: MathObj): boolean {
+    if (!isSum(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" + ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: "+" = "+";
+  args: MathObj[];
+  constructor(args: MathObj[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function sum(...args: MathObj[]) {
+  return new Sum(args);
+}
+
+function isSum(u: MathObj): u is Sum {
+  return u.kind() === expression_type.sum;
+}
+
+class Difference extends MathObj {
+  kind(): expression_type {
+    return expression_type.difference;
+  }
+  equals(other: MathObj): boolean {
+    if (!isDiff(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" - ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: "-" = "-";
+  args: MathObj[];
+  constructor(args: MathObj[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function diff(...args: MathObj[]) {
+  return new Difference(args);
+}
+
+function isDiff(u: MathObj): u is Difference {
+  return u.kind() === expression_type.difference;
+}
+
+class Product extends MathObj {
+  kind(): expression_type {
+    return expression_type.product;
+  }
+  equals(other: MathObj): boolean {
+    if (!isProduct(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" * ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: "*" = "*";
+  args: MathObj[];
+  constructor(args: MathObj[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function prod(...args: MathObj[]) {
+  return new Product(args);
+}
+
+function isProduct(u: MathObj): u is Product {
+  return u.kind() === expression_type.product;
+}
+
+class Quotient extends MathObj {
+  kind(): expression_type {
+    return expression_type.quotient;
+  }
+  equals(other: MathObj): boolean {
+    if (!isQuotient(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join(" / ");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: "/" = "/";
+  args: MathObj[];
+  constructor(args: MathObj[]) {
+    super();
+    this.args = args;
+  }
+}
+
+function quot(...args: MathObj[]) {
+  return new Quotient(args);
+}
+
+function isQuotient(u: MathObj): u is Quotient {
+  return u.kind() === expression_type.quotient;
+}
+
+class Power extends MathObj {
+  kind(): expression_type {
+    return expression_type.power;
+  }
+  equals(other: MathObj): boolean {
+    if (!isPower(other)) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const out = this.args.map((arg) => arg.toString()).join("^");
+    return this.parenLevel ? `(${out})` : out;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: "^" = "^";
+  args: MathObj[];
+  constructor(base: MathObj, exponent: MathObj) {
+    super();
+    this.args = [base, exponent];
+  }
+  get base() {
+    return this.args[0];
+  }
+  get exponent() {
+    return this.args[1];
+  }
+  simplify() {
+    let v = this.base;
+    let w = this.exponent;
+    if (isInt(v)) {
+      if (v.int === 0) return int(0);
+      if (v.int === 1) return int(1);
+    }
+    if (isInt(w)) {
+      if (w.int === 0) return int(1);
+      if (w.int === 1) return v;
+    }
+    let n = w;
+  }
+}
+
+function pow(base: MathObj, exponent: MathObj) {
+  return new Power(base, exponent);
+}
+
+function isPower(u: MathObj): u is Power {
+  return u.kind() === expression_type.power;
+}
+
+class Func extends MathObj {
+  kind(): expression_type {
+    return expression_type.call;
+  }
+  equals(other: MathObj): boolean {
+    if (!isCall(other)) {
+      return false;
+    } else if (other.op !== this.op) {
+      return false;
+    } else {
+      return argsEqual(this.args, other.args);
+    }
+  }
+  toString(): string {
+    const f = this.op;
+    const args = this.args.map((arg) => arg.toString()).join(",");
+    return `${f}(${args})`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    this.args = this.args.map(callbackfn);
+    return this;
+  }
+  op: string;
+  args: MathObj[];
+  constructor(op: string, args: MathObj[]) {
+    super();
+    this.op = op;
+    this.args = args;
+  }
+}
+
+function fn(fname: string, args: MathObj[]) {
+  return new Func(fname, args);
+}
+
+function isCall(u: MathObj): u is Func {
+  return u.kind() === expression_type.call;
+}
+
+function expr(source: string) {
+  const parse = () => {
+    let $current = 0;
+    let _tkns = lexical(source).stream();
+    if (_tkns.isLeft()) return _tkns;
+    const $tokens = _tkns.unwrap();
+
+    const consume = (type: token_type, message: string) => {
+      if (check(type)) return advance();
+      throw syntaxError(message, peek().$line);
+    };
+
+    const peek = () => {
+      return $tokens[$current];
+    };
+
+    const previous = () => {
+      return $tokens[$current - 1];
+    };
+
+    const atEnd = () => {
+      return $current >= $tokens.length;
+    };
+
+    const advance = () => {
+      if (!atEnd()) $current++;
+      return previous();
+    };
+
+    const check = (type: token_type) => {
+      if (atEnd()) return false;
+      return peek().$type === type;
+    };
+
+    const match = (...types: token_type[]) => {
+      for (let i = 0; i < types.length; i++) {
+        const type = types[i];
+        if (check(type)) {
+          advance();
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const expression = () => {
+      return equality();
+    };
+
+    const equality = () => {
+      let left = compare();
+      while (match(token_type.bang_equal, token_type.equal_equal)) {
+        let op = previous();
+        let right = compare();
+        left = relate(op.$lexeme as RelationOperator, [left, right]);
+      }
+      return left;
+    };
+
+    const compare = (): MathObj => {
+      let left = addition();
+      while (
+        match(
+          token_type.greater,
+          token_type.greater_equal,
+          token_type.less,
+          token_type.less_equal
+        )
+      ) {
+        let op = previous();
+        let right = addition();
+        left = relate(op.$lexeme as RelationOperator, [left, right]);
+      }
+      return left;
+    };
+
+    const addition = (): MathObj => {
+      let left = subtraction();
+      while (match(token_type.plus)) {
+        let right = subtraction();
+        left = sum(left, right);
+      }
+      return left;
+    };
+
+    const subtraction = (): MathObj => {
+      let left = product();
+      while (match(token_type.minus)) {
+        let right = product();
+        left = diff(left, right);
+      }
+      return left;
+    };
+
+    const product = (): MathObj => {
+      let left = imul();
+      while (match(token_type.star)) {
+        let right = imul();
+        left = prod(left, right);
+      }
+      return left;
+    };
+
+    const imul = (): MathObj => {
+      let left = quotient();
+      if (
+        (isInt(left) || isFloat64(left)) &&
+        (check(token_type.symbol) || check(token_type.native))
+      ) {
+        let right = quotient();
+        left = prod(left, right);
+      }
+      return left;
+    };
+
+    const quotient = (): MathObj => {
+      let left = power();
+      while (match(token_type.slash)) {
+        let right = power();
+        left = quot(left, right);
+      }
+      return left;
+    };
+
+    const power = (): MathObj => {
+      let left = negate();
+      while (match(token_type.caret)) {
+        let right = negate();
+        left = pow(left, right);
+      }
+      return left;
+    };
+
+    const negate = (): MathObj => {
+      if (match(token_type.minus)) {
+        let right = factorial();
+        if (isInt(right)) {
+          right = int(-right.int);
+          return right;
+        } else if (isFloat64(right)) {
+          right = float64(-right.float);
+          return right;
+        } else {
+          return diff(right);
+        }
+      }
+      return factorial();
+    };
+
+    const factorial = (): MathObj => {
+      let left = call();
+      if (match(token_type.bang)) {
+        left = fn("!", [left]);
+      }
+      return left;
+    };
+
+    const call = (): MathObj => {
+      let left = primary();
+      while (true) {
+        if (match(token_type.left_paren)) {
+          left = finishCall(left);
+        } else {
+          break;
+        }
+      }
+      return left;
+    };
+
+    const finishCall = (callee: MathObj) => {
+      const args: MathObj[] = [];
+      if (!check(token_type.right_paren)) {
+        do {
+          args.push(expression());
+        } while (match(token_type.comma));
+      }
+      consume(token_type.right_paren, 'Expected ")" after arguments');
+      if (!isSym(callee)) {
+        throw syntaxError(
+          "Expected a symbol for function call",
+          previous().$line
+        );
+      }
+      return fn(callee.sym, args);
+    };
+
+    const primary = (): MathObj => {
+      if (match(token_type.boolean))
+        return bool(previous().$literal as boolean);
+      if (match(token_type.integer)) return int(previous().$literal as number);
+      if (match(token_type.float))
+        return float64(previous().$literal as number);
+      if (match(token_type.symbol)) return sym(previous().$lexeme);
+      if (match(token_type.native)) return sym(previous().$lexeme);
+      if (match(token_type.fraction)) {
+        const f = previous().$literal as FRACTION;
+        return frac(int(f.$n), int(f.$d));
+      }
+      if (match(token_type.left_paren)) {
+        let expr = expression();
+        consume(token_type.right_paren, `Expected a closing ")"`);
+        expr = expr.parend();
+        if (check(token_type.left_paren)) {
+          let right = expression();
+          return prod(expr, right);
+        }
+        return expr;
+      }
+      throw syntaxError(
+        `Unrecognized lexeme: ${peek().$lexeme}.`,
+        peek().$line
+      );
+    };
+
+    const run = () => {
+      try {
+        const result = expression();
+        return right(result);
+      } catch (error) {
+        return left(error as Err);
+      }
+    };
+
+    return run();
+  };
+
+  return {
+    ast() {
+      const res = parse();
+      if (res.isLeft()) {
+        return res.unwrap().toString();
+      } else {
+        return treestring(res.unwrap());
+      }
+    },
+    obj() {
+      const res = parse();
+      if (res.isLeft()) {
+        return UNDEFINED();
+      } else {
+        return res.unwrap();
+      }
+    },
+  };
+}
+
+function simplifyRationalNumber(u: MathObj) {
+  if (isInt(u)) return u;
+  if (isFrac(u)) {
+    const n = u.numerator;
+    const d = u.denominator;
+    if (mod(n.int, d.int) === 0) return int(iquot(n.int, d.int));
+    let g = gcd(n.int, d.int);
+    if (d.int > 0) return frac(int(iquot(n.int, g)), int(iquot(d.int, g)));
+    if (d.int < 0) return frac(int(iquot(-n.int, g)), int(iquot(-d.int, g)));
+  }
+  throw algebraError(
+    `simplifyRationalNumber called with nonrational argument.`
+  );
+}
+
+type Rational = Int | Fraction;
+
+function isRational(v: MathObj): v is Rational {
+  return isInt(v) || isFrac(v);
+}
+
+function evalQuotient(v: MathObj, w: MathObj) {
+  if (isRational(v) && isRational(w)) {
+    if (w.numerator.int === 0) return UNDEFINED();
+    return frac(
+      int(v.numerator.int * w.denominator.int),
+      int(w.numerator.int * v.denominator.int)
+    );
+  }
+  throw algebraError(`expected rational in call to evalQuotient`);
+}
+
+function evalSum(v: MathObj, w: MathObj) {
+  if (isRational(v) && isRational(w)) {
+    return frac(
+      int(
+        v.numerator.int * w.denominator.int +
+          w.numerator.int * v.denominator.int
+      ),
+      int(v.denominator.int * w.denominator.int)
+    );
+  }
+  throw algebraError(`expected rational in call to evalSum`);
+}
+
+function evalDiff(v: MathObj, w: MathObj) {
+  if (isRational(v) && isRational(w)) {
+    return frac(
+      int(
+        v.numerator.int * w.denominator.int -
+          w.numerator.int * v.denominator.int
+      ),
+      int(v.denominator.int * w.denominator.int)
+    );
+  }
+  throw algebraError(`expected rational in call to evalDiff`);
+}
+
+function evalProduct(v: MathObj, w: MathObj) {
+  if (isRational(v) && isRational(w)) {
+    return frac(
+      int(v.numerator.int * w.numerator.int),
+      int(v.denominator.int * w.denominator.int)
+    );
+  }
+  throw algebraError(`expected rational in call to evalProduct`);
+}
+
+function evalPower(v: MathObj, n: MathObj): Rational | Undefined {
+  if (isRational(v) && isInt(n)) {
+    if (v.numerator.int !== 0) {
+      if (n.int > 0) return evalProduct(evalPower(v, int(n.int - 1)), v);
+      if (n.int === 0) return int(1);
+      if (n.int === -1) return frac(v.denominator, v.numerator);
+      if (n.int < -1) {
+        let s = frac(v.denominator, v.numerator);
+        return evalPower(s, int(-n.int));
+      }
+    }
+    if (n.int >= 1) return int(0);
+    if (n.int <= 0) return UNDEFINED();
+  }
+  throw algebraError(
+    `expected rational base and integer exponent in call to evalPower`
+  );
+}
+
+function simplifyRNERec(u: MathObj): MathObj {
+  if (isInt(u)) return u;
+  if (isFrac(u)) {
+    if (u.denominator.int === 0) return UNDEFINED();
+    else return u;
+  }
+  if (isSum(u) && u.args.length === 1) {
+    return simplifyRNERec(u.args[0]);
+  }
+  if (isDiff(u) && u.args.length === 1) {
+    let v = simplifyRNERec(u.args[0]);
+    if (isUndefined(v)) return v;
+    return evalProduct(int(-1), v);
+  }
+  if (isSum(u) && u.args.length === 2) {
+    let v = simplifyRNERec(u.args[0]);
+    let w = simplifyRNERec(u.args[1]);
+    if (isUndefined(v) || isUndefined(w)) {
+      return UNDEFINED();
+    }
+    return evalSum(v, w);
+  }
+  if (isProduct(u) && u.args.length === 2) {
+    let v = simplifyRNERec(u.args[0]);
+    let w = simplifyRNERec(u.args[1]);
+    if (isUndefined(v) || isUndefined(w)) {
+      return UNDEFINED();
+    }
+    return evalProduct(v, w);
+  }
+  if (isDiff(u) && u.args.length === 2) {
+    let v = simplifyRNERec(u.args[0]);
+    let w = simplifyRNERec(u.args[1]);
+    if (isUndefined(v) || isUndefined(w)) {
+      return UNDEFINED();
+    }
+    return evalDiff(v, w);
+  }
+  if (isFrac(u)) {
+    let v = simplifyRNERec(u.numerator);
+    let w = simplifyRNERec(u.denominator);
+    if (isUndefined(v) || isUndefined(w)) {
+      return UNDEFINED();
+    }
+    return evalQuotient(v, w);
+  }
+  if (isPower(u)) {
+    let v = simplifyRNERec(u.base);
+    if (isUndefined(v)) return v;
+    return evalPower(v, u.exponent);
+  }
+  return UNDEFINED();
+}
+
+function simplifyRNE(u: MathObj) {
+  const v = simplifyRNERec(u);
+  if (isUndefined(v)) return UNDEFINED();
+  return simplifyRationalNumber(v);
+}
+
+function reduceProductRec(L: MathObj[]) {
+  // SPRDREC-1
+  if (L.length === 2) {
+    const u1 = L[0];
+    const u2 = L[1];
+    if (!isProduct(u1) && !isProduct(u2)) {
+      const P = simplifyRNE(prod(u1, u2));
+      // SPRDREC-1-1
+      if (isInt(P) && P.int === 1) return [];
+      if (isInt(P) && P.int !== 1) return [P];
+      // SPRDREC-1-2(a)
+      if (isInt(u1) && u1.int === 1) return [u2];
+      // SPRDREC-1-2(b)
+      if (isInt(u2) && u2.int === 1) return [u1];
+      // SPRDREC-1-3
+      if (isPower(u1) && isPower(u2)) {
+        if (u1.base.equals(u2.base)) {
+          // const S = reduceSum(sum(u1.exponent, u2.exponent));
+          // const P = reducePower(pow(u1.base, S));
+          if (isInt(P) && P.int === 1) {
+            return [];
+          } else {
+            return [P];
+          }
+        }
+      }
+      // SPRDREC-1-4
+      // NEED ORDER RELATION
+      // SPRDREC-1-5
+      return L;
+    }
+    // SPRDREC-2
+    if (isProduct(u1) || isProduct(u2)) {
+      
+    }
+  }
+}
+
+function reduceProduct(u: Product) {
+  const L = u.args;
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i];
+    // SPRD-1
+    if (isUndefined(l)) return UNDEFINED();
+    // SPRD-2
+    if (isInt(l) && l.int === 0) return int(0);
+  }
+  // SPRD-3
+  if (L.length === 1) return L[0];
+  // SPRD-4
+  const v = reduceProductRec(L);
+  return UNDEFINED();
+}
+
+function reduceIntPower(v: MathObj, n: Int) {
+  if (isRational(v)) {
+    return simplifyRNE(pow(v, n));
+  }
+  if (n.int === 0) return int(1);
+  if (n.int === 1) return v;
+  if (isPower(v)) {
+    let r = v.base;
+    let s = v.exponent;
+    let p = reduceProduct(prod(s, n));
+    if (isInt(p)) {
+      return reduceIntPower(r, p);
+    } else {
+      return pow(r, p);
+    }
+  }
+  if (isProduct(v)) {
+    const r = v.map((arg) => pow(arg, n));
+    return reduceProduct(r);
+  }
+  return pow(v, n);
+}
+
+function reducePower(u: Power) {
+  let v = u.base;
+  let w = u.exponent;
+  if (isUndefined(v) || isUndefined(w)) return UNDEFINED(); // SPOW-1
+  if (isInt(v) && v.int === 0) return int(0); // SPOW-2
+  if (isInt(v) && v.int === 1) return int(1); // SPOW-3
+  if (isInt(w)) {
+    // SPOW-4
+    return reduceIntPower(v, w);
+  }
+  return UNDEFINED();
+}
+
+function reduce(u: MathObj) {
+  if (isInt(u) || isSym(u)) return u;
+  else if (isFrac(u)) return simplifyRationalNumber(u);
+  else {
+    if (isPower(u)) {
+      return reducePower(u);
+    }
+  }
+}
+
+const k = `(a * b * c)^2`;
+const j = expr(k).ast();
+// const h = reduce(expr(k).obj());
+// clog(j);
+// clog(h.toString());
+
 // § Nodekind Enum
 enum nodekind {
   class_statement,
@@ -2576,7 +3635,7 @@ interface Visitor<T> {
   superExpr(node: SuperExpr): T;
   thisExpr(node: ThisExpr): T;
   stringConcat(node: StringConcatExpr): T;
-  sym(node: Sym): T;
+  sym(node: Identifier): T;
   string(node: StringLit): T;
   bool(node: Bool): T;
   nil(node: Nil): T;
@@ -2700,11 +3759,11 @@ class FnStmt extends Statement {
     return "fn-declaration";
   }
   $name: Token<token_type.symbol>;
-  $params: Sym[];
+  $params: Identifier[];
   $body: Statement[];
   constructor(
     name: Token<token_type.symbol>,
-    params: Sym[],
+    params: Identifier[],
     body: Statement[]
   ) {
     super();
@@ -2717,7 +3776,7 @@ class FnStmt extends Statement {
 /** Returns a new function declaration statement. */
 function $fnStmt(
   name: Token<token_type.symbol>,
-  params: Sym[],
+  params: Identifier[],
   body: Statement[]
 ) {
   return new FnStmt(name, params, body);
@@ -2822,10 +3881,10 @@ class VariableStmt extends Statement {
   toString(): string {
     return "variable-declaration";
   }
-  $variable: Sym;
+  $variable: Identifier;
   $value: Expr;
   $mutable: boolean;
-  constructor(variable: Sym, value: Expr, mutable: boolean) {
+  constructor(variable: Identifier, value: Expr, mutable: boolean) {
     super();
     this.$variable = variable;
     this.$value = value;
@@ -2834,12 +3893,12 @@ class VariableStmt extends Statement {
 }
 
 /** Returns a new 'var' statement node. */
-function $var(symbol: Sym, value: Expr) {
+function $var(symbol: Identifier, value: Expr) {
   return new VariableStmt(symbol, value, true);
 }
 
 /** Returns a new 'let' statement node. */
-function $let(symbol: Sym, value: Expr) {
+function $let(symbol: Identifier, value: Expr) {
   return new VariableStmt(symbol, value, false);
 }
 
@@ -3022,7 +4081,7 @@ function $matrix(
 }
 
 /** A node corresponding to a symbol. */
-class Sym extends Expr {
+class Identifier extends Expr {
   accept<T>(visitor: Visitor<T>): T {
     return visitor.sym(this);
   }
@@ -3041,11 +4100,11 @@ class Sym extends Expr {
 
 /** Returns a new symbol node. */
 function $sym(symbol: Token<token_type.symbol>) {
-  return new Sym(symbol);
+  return new Identifier(symbol);
 }
 
 /** Returns true, and asserts, if the given node is a symbol node. */
-function isSymbol(node: ASTNode): node is Sym {
+function isSymbol(node: ASTNode): node is Identifier {
   return node.kind() === nodekind.symbol;
 }
 
@@ -3060,9 +4119,9 @@ class AssignmentExpr extends Expr {
   toString(): string {
     return `${this.$symbol.toString()} = ${this.$value.toString()}`;
   }
-  $symbol: Sym;
+  $symbol: Identifier;
   $value: Expr;
-  constructor(symbol: Sym, value: Expr) {
+  constructor(symbol: Identifier, value: Expr) {
     super();
     this.$symbol = symbol;
     this.$value = value;
@@ -3070,7 +4129,7 @@ class AssignmentExpr extends Expr {
 }
 
 /** Returns a new assignment expression node. */
-function $assign(symbol: Sym, value: Expr) {
+function $assign(symbol: Identifier, value: Expr) {
   return new AssignmentExpr(symbol, value);
 }
 
@@ -5163,7 +6222,7 @@ class Resolver<T extends Resolvable = Resolvable> implements Visitor<void> {
   stringConcat(node: StringConcatExpr): void {
     throw new Error("Method not implemented.");
   }
-  sym(node: Sym): void {
+  sym(node: Identifier): void {
     const name = node.$symbol;
     if (!this.scopesIsEmpty() && this.peek().get(name.$lexeme) === false) {
       throw resolverError(
@@ -6036,7 +7095,7 @@ class Compiler implements Visitor<Primitive> {
     }
   }
 
-  sym(node: Sym): Primitive {
+  sym(node: Identifier): Primitive {
     return this.lookupVariable(node.$symbol, node);
   }
 
