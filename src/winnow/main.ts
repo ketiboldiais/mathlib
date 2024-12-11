@@ -3603,82 +3603,12 @@ function order(u: MathObj, v: MathObj): boolean {
   return !order(v, u);
 }
 
-// this is ok
-function simplifyIntPower(v: MathObj, n: MathObj) {
-  // sintpow-1
-  if (isInt(v) || isFrac(v)) {
-    return simplifyRNE(pow(v, n));
-  }
-  // sintpow-2
-  if (isInt(n) && n.int === 0) return int(1);
-  // sintpow-3
-  if (isInt(n) && n.int === 1) return v;
-  // sintpow-4
-  if (isPower(v)) {
-    let r = v.args[0];
-    let s = v.args[1];
-    let p = simplifyProduct(prod(s, n));
-    if (isInt(p)) {
-      return simplifyIntPower(r, p);
-    } else {
-      return pow(r, p);
-    }
-  }
-  // sint pow5
-  if (isProduct(v)) {
-    let r = v.map((arg) => pow(arg, n));
-    return r;
-  }
-
-  // sintpow6
-  return pow(v, n);
-}
-
-// this is ok
-function simplifyPower(u: Power) {
-  // v^w
-  let v = u.base;
-  let w = u.exponent;
-
-  // spow-1
-  if (isUndefined(v) || isUndefined(w)) return UNDEFINED();
-
-  // spow-2
-  if (isInt(v) && v.int === 0) return int(0);
-
-  // spow-3
-  if (isInt(v) && v.int === 1) return int(1);
-  if (isInt(w) && w.int === 0) return int(1);
-  if (isInt(w) && w.int === 1) return v;
-  if ((isInt(v) || isFrac(v)) && isInt(w)) return simplifyRNE(pow(v, w));
-  if (isFloat64(v) && isInt(w)) return float64(v.float ** w.int);
-  if (isFloat64(v) && isFrac(w)) return float64(v.float ** w.float64().float);
-  if (isInt(v) && isFloat64(w)) return float64(v.int ** w.float);
-  if (isFrac(v) && isFloat64(w)) return float64(v.float64().float ** w.float);
-
-  // spow-4
-  if (isInt(w)) return simplifyIntPower(v, w);
-
-  // spow-5
-  return u;
-}
-
-function reduce(u: MathObj) {
-  if (isInt(u) || isSym(u)) return u;
-  else if (isFrac(u)) return simplifyRationalNumber(u);
-  else {
-    if (isPower(u)) {
-      return simplifyPower(u);
-    }
-  }
-}
-
-const a = `a + c + d`;
-const b = `b + c + d`;
-const ax = expr(a).obj();
-const bx = expr(b).obj();
-const ab = order(ax, bx);
-clog(ab);
+const a = `a + b + c`;
+const ax = expr(a).ast();
+clog(ax);
+// const bx = expr(b).obj();
+// const ab = order(ax, bx);
+// clog(ab);
 // const h = reduce(expr(k).obj());
 // clog(j);
 // clog(h.toString());
