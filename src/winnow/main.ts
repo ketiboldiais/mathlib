@@ -3603,6 +3603,60 @@ function order(u: MathObj, v: MathObj): boolean {
   return !order(v, u);
 }
 
+/** Returns the base of the given math object. */
+function base(u: MathObj) {
+  if (isPower(u)) {
+    return u.base;
+  } else if (isSym(u) || isProduct(u) || isSum(u) || isFunc(u)) {
+    return u;
+  } else {
+    return UNDEFINED();
+  }
+}
+
+/** Returns the exponent of the given math object. */
+function exponent(u: MathObj) {
+  if (isPower(u)) {
+    return u.exponent;
+  } else if (isSym(u) || isProduct(u) || isSum(u) || isFunc(u)) {
+    return int(1);
+  } else {
+    return UNDEFINED();
+  }
+}
+
+/** Returns the term of the given math object. */
+function term(u: MathObj) {
+  if (isSym(u) || isSum(u) || isPower(u) || isFunc(u)) {
+    return u;
+  } else if (isProduct(u)) {
+    if (isNum(u.args[0])) {
+      return prod(...cdr(u.args));
+    } else {
+      return u;
+    }
+  } else {
+    return UNDEFINED();
+  }
+}
+
+/** Returns the constant of the given math object. */
+function constant(u: MathObj) {
+  if (isSym(u) || isSum(u) || isPower(u) || isFunc(u)) {
+    return int(1);
+  } else if (isProduct(u)) {
+    if (isNum(u.args[0])) {
+      return u.args[0];
+    } else {
+      return int(1);
+    }
+  } else {
+    return UNDEFINED();
+  }
+}
+
+
+
 const a = `a + b + c`;
 const ax = expr(a).ast();
 clog(ax);
