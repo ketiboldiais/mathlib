@@ -2501,11 +2501,8 @@ function isFraction(u: any): u is FRACTION {
   return u instanceof FRACTION;
 }
 
-function cons<T>(list: T[]) {
-  if (list.length === 0) {
-    throw runtimeError("Called cons on empty list", 0);
-  }
-  return list[0];
+function cons<T>(list: T[], x: T) {
+  return [x, ...list];
 }
 
 function cdr<T>(list: T[]) {
@@ -2641,6 +2638,9 @@ class Int extends Numeric {
   kind(): expression_type {
     return expression_type.int;
   }
+  rational() {
+    return frac(this, int(1));
+  }
   equals(other: MathObj): boolean {
     if (!isInt(other)) {
       return false;
@@ -2773,17 +2773,101 @@ function isSym(u: MathObj): u is Sym {
   return u.kind() === expression_type.symbol;
 }
 
-class Fraction extends MathObj {
+class Fraction extends Numeric {
+  /** Simplifies the given fraction. */
+  static simplify(frac: Fraction) {
+    const numerator = frac.numerator.int;
+    const denominator = frac.denominator.int;
+    const sgn = Math.sign(numerator) * Math.sign(denominator);
+    const n = Math.abs(numerator);
+    const d = Math.abs(denominator);
+    const f = gcd(n, d);
+    return new Fraction(int((sgn * n) / f), int(d / f));
+  }
+
+  float64() {
+    return float64(this.numerator.int / this.denominator.int);
+  }
+
   kind(): expression_type {
     return expression_type.fraction;
   }
+
+  negate() {
+    return frac(int(-this.numerator.int), this.denominator);
+  }
+
+  times(other: Fraction) {
+    return Fraction.simplify(
+      frac(
+        int(other.numerator.int * this.numerator.int),
+        int(other.denominator.int * this.denominator.int)
+      )
+    );
+  }
+
+  div(other: Fraction) {
+    return Fraction.simplify(
+      frac(
+        int(other.numerator.int * this.denominator.int),
+        int(this.denominator.int * other.denominator.int)
+      )
+    );
+  }
+
+  plus(other: Fraction) {
+    return Fraction.simplify(
+      frac(
+        int(
+          this.numerator.int * other.denominator.int +
+            other.numerator.int * this.denominator.int
+        ),
+        int(this.denominator.int * other.denominator.int)
+      )
+    );
+  }
+
+  minus(other: Fraction) {
+    return Fraction.simplify(
+      frac(
+        int(
+          this.numerator.int * other.denominator.int -
+            other.numerator.int * this.denominator.int
+        ),
+        int(this.denominator.int * other.denominator.int)
+      )
+    );
+  }
+
+  lte(other: Fraction) {
+    const thisN = this.numerator.int;
+    const thisD = this.denominator.int;
+    const otherN = other.numerator.int;
+    const otherD = other.denominator.int;
+    return thisN * otherD <= otherN * thisD;
+  }
+
+  lt(other: Fraction) {
+    return this.lte(other) && !this.equals(other);
+  }
+
+  gt(other: Fraction) {
+    return !this.lte(other);
+  }
+
+  gte(other: Fraction) {
+    return this.gt(other) || this.equals(other);
+  }
+
   equals(other: MathObj): boolean {
     if (!isFrac(other)) {
       return false;
     } else {
+      const a = Fraction.simplify(this);
+      const b = Fraction.simplify(other);
       return (
-        this.numerator.equals(other.numerator) &&
-        this.denominator.equals(other.denominator)
+        a.numerator.int === b.numerator.int &&
+        a.denominator.int === b.denominator.int
       );
     }
   }
@@ -2801,6 +2885,9 @@ class Fraction extends MathObj {
     super();
     this.numerator = numerator;
     this.denominator = denominator;
+  }
+  rational() {
+    return this;
   }
 }
 
@@ -3021,7 +3108,7 @@ class Func extends MathObj {
     return expression_type.call;
   }
   equals(other: MathObj): boolean {
-    if (!isCall(other)) {
+    if (!isFunc(other)) {
       return false;
     } else if (other.op !== this.op) {
       return false;
@@ -3053,7 +3140,7 @@ function fn(fname: string, args: MathObj[]) {
   return new Func(fname, args);
 }
 
-function isCall(u: MathObj): u is Func {
+function isFunc(u: MathObj): u is Func {
   return u.kind() === expression_type.call;
 }
 
@@ -3324,6 +3411,10 @@ function isRational(v: MathObj): v is Rational {
   return isInt(v) || isFrac(v);
 }
 
+function isNum(v: MathObj): v is Numeric {
+  return isRational(v) || isFloat64(v);
+}
+
 function evalQuotient(v: MathObj, w: MathObj) {
   if (isRational(v) && isRational(w)) {
     if (w.numerator.int === 0) return UNDEFINED();
@@ -3450,94 +3541,126 @@ function simplifyRNE(u: MathObj) {
   return simplifyRationalNumber(v);
 }
 
-function reduceProductRec(L: MathObj[]) {
-  // SPRDREC-1
-  if (L.length === 2) {
-    const u1 = L[0];
-    const u2 = L[1];
-    if (!isProduct(u1) && !isProduct(u2)) {
-      const P = simplifyRNE(prod(u1, u2));
-      // SPRDREC-1-1
-      if (isInt(P) && P.int === 1) return [];
-      if (isInt(P) && P.int !== 1) return [P];
-      // SPRDREC-1-2(a)
-      if (isInt(u1) && u1.int === 1) return [u2];
-      // SPRDREC-1-2(b)
-      if (isInt(u2) && u2.int === 1) return [u1];
-      // SPRDREC-1-3
-      if (isPower(u1) && isPower(u2)) {
-        if (u1.base.equals(u2.base)) {
-          // const S = reduceSum(sum(u1.exponent, u2.exponent));
-          // const P = reducePower(pow(u1.base, S));
-          if (isInt(P) && P.int === 1) {
-            return [];
-          } else {
-            return [P];
-          }
-        }
-      }
-      // SPRDREC-1-4
-      // NEED ORDER RELATION
-      // SPRDREC-1-5
-      return L;
-    }
-    // SPRDREC-2
-    if (isProduct(u1) || isProduct(u2)) {
-      
-    }
+// O-3
+const O3 = (uElts: MathObj[], vElts: MathObj[]): boolean => {
+  if (uElts.length === 0) return true;
+  if (vElts.length === 0) return false;
+  let u = uElts[0];
+  let v = vElts[0];
+  return !u.equals(v) ? order(u, v) : O3(cdr(uElts), cdr(vElts));
+};
+
+function order(u: MathObj, v: MathObj): boolean {
+  // O-1
+  if (isRational(u) && isRational(v)) {
+    return u.rational().lt(v.rational());
   }
+  if (isFloat64(u) && isInt(v)) {
+    return u.float < v.int;
+  }
+  if (isFloat64(u) && isFrac(v)) {
+    return u.float < v.numerator.int / v.denominator.int;
+  }
+  if (isInt(u) && isFloat64(v)) {
+    return u.int < v.float;
+  }
+  if (isFrac(u) && isFloat64(v)) {
+    return u.numerator.int / u.denominator.int < v.float;
+  }
+  // O-2
+  if (isSym(u) && isSym(v)) {
+    return u.sym < v.sym;
+  }
+  if (isProduct(u) && isProduct(v)) {
+    return O3(u.args.reverse(), v.args.reverse());
+  }
+  if (isSum(u) && isSum(v)) {
+    return O3(u.args.reverse(), v.args.reverse());
+  }
+  if (isPower(u) && isPower(v)) {
+    return u.base.equals(v.base)
+      ? order(u.exponent, v.exponent)
+      : order(u.base, v.base);
+  }
+  if (isFunc(u) && isFunc(v)) {
+    return u.op === v.op ? O3(u.args, v.args) : u.op < v.op;
+  }
+  if (isNum(u) && !isNum(v)) {
+    return true;
+  }
+  if (isProduct(u) && (isPower(v) || isSum(v) || isFunc(v) || isSym(v))) {
+    return order(u, prod(v));
+  }
+  if (isPower(u) && (isSum(v) || isFunc(v) || isSym(v))) {
+    return order(u, pow(v, int(1)));
+  }
+  if (isSum(u) && (isFunc(v) || isSym(v))) {
+    return order(u, sum(v));
+  }
+  if (isFunc(u) && isSym(v)) {
+    return u.op === v.sym ? false : order(sym(u.op), v);
+  }
+  return !order(v, u);
 }
 
-function reduceProduct(u: Product) {
-  const L = u.args;
-  for (let i = 0; i < L.length; i++) {
-    const l = L[i];
-    // SPRD-1
-    if (isUndefined(l)) return UNDEFINED();
-    // SPRD-2
-    if (isInt(l) && l.int === 0) return int(0);
-  }
-  // SPRD-3
-  if (L.length === 1) return L[0];
-  // SPRD-4
-  const v = reduceProductRec(L);
-  return UNDEFINED();
-}
-
-function reduceIntPower(v: MathObj, n: Int) {
-  if (isRational(v)) {
+// this is ok
+function simplifyIntPower(v: MathObj, n: MathObj) {
+  // sintpow-1
+  if (isInt(v) || isFrac(v)) {
     return simplifyRNE(pow(v, n));
   }
-  if (n.int === 0) return int(1);
-  if (n.int === 1) return v;
+  // sintpow-2
+  if (isInt(n) && n.int === 0) return int(1);
+  // sintpow-3
+  if (isInt(n) && n.int === 1) return v;
+  // sintpow-4
   if (isPower(v)) {
-    let r = v.base;
-    let s = v.exponent;
-    let p = reduceProduct(prod(s, n));
+    let r = v.args[0];
+    let s = v.args[1];
+    let p = simplifyProduct(prod(s, n));
     if (isInt(p)) {
-      return reduceIntPower(r, p);
+      return simplifyIntPower(r, p);
     } else {
       return pow(r, p);
     }
   }
+  // sint pow5
   if (isProduct(v)) {
-    const r = v.map((arg) => pow(arg, n));
-    return reduceProduct(r);
+    let r = v.map((arg) => pow(arg, n));
+    return r;
   }
+
+  // sintpow6
   return pow(v, n);
 }
 
-function reducePower(u: Power) {
+// this is ok
+function simplifyPower(u: Power) {
+  // v^w
   let v = u.base;
   let w = u.exponent;
-  if (isUndefined(v) || isUndefined(w)) return UNDEFINED(); // SPOW-1
-  if (isInt(v) && v.int === 0) return int(0); // SPOW-2
-  if (isInt(v) && v.int === 1) return int(1); // SPOW-3
-  if (isInt(w)) {
-    // SPOW-4
-    return reduceIntPower(v, w);
-  }
-  return UNDEFINED();
+
+  // spow-1
+  if (isUndefined(v) || isUndefined(w)) return UNDEFINED();
+
+  // spow-2
+  if (isInt(v) && v.int === 0) return int(0);
+
+  // spow-3
+  if (isInt(v) && v.int === 1) return int(1);
+  if (isInt(w) && w.int === 0) return int(1);
+  if (isInt(w) && w.int === 1) return v;
+  if ((isInt(v) || isFrac(v)) && isInt(w)) return simplifyRNE(pow(v, w));
+  if (isFloat64(v) && isInt(w)) return float64(v.float ** w.int);
+  if (isFloat64(v) && isFrac(w)) return float64(v.float ** w.float64().float);
+  if (isInt(v) && isFloat64(w)) return float64(v.int ** w.float);
+  if (isFrac(v) && isFloat64(w)) return float64(v.float64().float ** w.float);
+
+  // spow-4
+  if (isInt(w)) return simplifyIntPower(v, w);
+
+  // spow-5
+  return u;
 }
 
 function reduce(u: MathObj) {
@@ -3545,13 +3668,17 @@ function reduce(u: MathObj) {
   else if (isFrac(u)) return simplifyRationalNumber(u);
   else {
     if (isPower(u)) {
-      return reducePower(u);
+      return simplifyPower(u);
     }
   }
 }
 
-const k = `(a * b * c)^2`;
-const j = expr(k).ast();
+const a = `a + c + d`;
+const b = `b + c + d`;
+const ax = expr(a).obj();
+const bx = expr(b).obj();
+const ab = order(ax, bx);
+clog(ab);
 // const h = reduce(expr(k).obj());
 // clog(j);
 // clog(h.toString());
