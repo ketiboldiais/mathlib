@@ -2537,6 +2537,11 @@ enum expression_type {
 }
 
 abstract class MathObj {
+  isSimplified: boolean = false;
+  markSimplified() {
+    this.isSimplified = true;
+    return this;
+  }
   parenLevel: number = 0;
   parend() {
     this.parenLevel++;
@@ -2632,9 +2637,17 @@ function isBool(u: MathObj): u is Boolean {
   return u.kind() === expression_type.boolean;
 }
 
-abstract class Numeric extends MathObj {}
+abstract class Numeric extends MathObj {
+  abstract value(): number;
+  isZero() {
+    return this.value() === 0;
+  }
+}
 
 class Int extends Numeric {
+  value(): number {
+    return this.int;
+  }
   kind(): expression_type {
     return expression_type.int;
   }
@@ -2678,6 +2691,9 @@ function isInt(u: MathObj): u is Int {
 }
 
 class Float64 extends Numeric {
+  value(): number {
+    return this.float;
+  }
   kind(): expression_type {
     return expression_type.float64;
   }
@@ -2785,8 +2801,8 @@ class Fraction extends Numeric {
     return new Fraction(int((sgn * n) / f), int(d / f));
   }
 
-  float64() {
-    return float64(this.numerator.int / this.denominator.int);
+  value() {
+    return this.numerator.int / this.denominator.int;
   }
 
   kind(): expression_type {
@@ -3603,63 +3619,10 @@ function order(u: MathObj, v: MathObj): boolean {
   return !order(v, u);
 }
 
-/** Returns the base of the given math object. */
-function base(u: MathObj) {
-  if (isPower(u)) {
-    return u.base;
-  } else if (isSym(u) || isProduct(u) || isSum(u) || isFunc(u)) {
-    return u;
-  } else {
-    return UNDEFINED();
-  }
-}
+const a = `3/a`;
+const ax = expr(a);
+clog(ax.ast());
 
-/** Returns the exponent of the given math object. */
-function exponent(u: MathObj) {
-  if (isPower(u)) {
-    return u.exponent;
-  } else if (isSym(u) || isProduct(u) || isSum(u) || isFunc(u)) {
-    return int(1);
-  } else {
-    return UNDEFINED();
-  }
-}
-
-/** Returns the term of the given math object. */
-function term(u: MathObj) {
-  if (isSym(u) || isSum(u) || isPower(u) || isFunc(u)) {
-    return u;
-  } else if (isProduct(u)) {
-    if (isNum(u.args[0])) {
-      return prod(...cdr(u.args));
-    } else {
-      return u;
-    }
-  } else {
-    return UNDEFINED();
-  }
-}
-
-/** Returns the constant of the given math object. */
-function constant(u: MathObj) {
-  if (isSym(u) || isSum(u) || isPower(u) || isFunc(u)) {
-    return int(1);
-  } else if (isProduct(u)) {
-    if (isNum(u.args[0])) {
-      return u.args[0];
-    } else {
-      return int(1);
-    }
-  } else {
-    return UNDEFINED();
-  }
-}
-
-
-
-const a = `a + b + c`;
-const ax = expr(a).ast();
-clog(ax);
 // const bx = expr(b).obj();
 // const ab = order(ax, bx);
 // clog(ab);
