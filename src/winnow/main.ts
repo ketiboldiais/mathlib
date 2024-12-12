@@ -2508,15 +2508,9 @@ function cons<T>(list: T[], x: T) {
 function cdr<T>(list: T[]) {
   if (list.length === 0) {
     return [];
+  } else {
+    return list.slice(1);
   }
-  if (list.length === 1) {
-    return list;
-  }
-  const out = [];
-  for (let i = 1; i < list.length; i++) {
-    out.push(list[i]);
-  }
-  return out;
 }
 
 enum expression_type {
@@ -3619,9 +3613,266 @@ function order(u: MathObj, v: MathObj): boolean {
   return !order(v, u);
 }
 
-const a = `3/a`;
+/** Returns the base of the given math object. */
+function base(u: MathObj) {
+  return isPower(u) ? u.base : u;
+}
+
+/** Returns the exponent of the given math object. */
+function exponent(u: MathObj) {
+  return isPower(u) ? u.exponent : int(1);
+}
+
+/** Returns the term of the given math object. */
+function term(u: MathObj) {
+  if (isProduct(u) && isNum(u.args[0])) {
+    return prod(...cdr(u.args));
+  }
+  if (isProduct(u)) return u;
+  return prod(u);
+}
+
+/** Returns the constant of the given math object. */
+function constant(u: MathObj) {
+  return isProduct(u) && isNum(u.args[0]) ? u.args[0] : int(1);
+}
+
+function mergeSums(pElts: MathObj[], qElts: MathObj[]): MathObj[] {
+  if (qElts.length === 0) return pElts;
+  if (pElts.length === 0) return qElts;
+
+  let p = pElts[0];
+  let ps = cdr(pElts);
+
+  let q = qElts[0];
+  let qs = cdr(qElts);
+
+  let res = simplifySumRec([p, q]);
+  if (res.length === 0) return mergeSums(ps, qs);
+  if (res.length === 1) return cons(mergeSums(ps, qs), res[0]);
+  if (argsEqual(res, [p, q])) return cons(mergeSums(ps, qElts), p);
+  if (argsEqual(res, [q, p])) return cons(mergeSums(pElts, qs), q);
+  throw algebraError("mergeSums failed");
+}
+
+// TODO check that this is ok
+function simplifySumRec(elts: MathObj[]): MathObj[] {
+  if (elts.length === 2) {
+    if (isSum(elts[0]) && isSum(elts[1])) {
+      return mergeSums(elts[0].args, elts[1].args);
+    }
+    if (isSum(elts[0])) {
+      return mergeSums(elts[0].args, [elts[1]]);
+    }
+    if (isSum(elts[1])) {
+      return mergeSums([elts[0]], elts[1].args);
+    }
+
+    if (
+      (isInt(elts[0]) || isFrac(elts[0])) &&
+      (isInt(elts[1]) || isFrac(elts[1]))
+    ) {
+      let P = simplifyRNE(sum(elts[0], elts[1]));
+      if (isNum(P) && P.value() === 0) return [];
+      return [P];
+    }
+
+    if (isNum(elts[0]) && elts[0].value() === 0) {
+      return [elts[1]];
+    }
+
+    if (isNum(elts[1]) && elts[1].value() === 0) {
+      return [elts[0]];
+    }
+
+    let p = elts[0];
+    let q = elts[1];
+
+    if (term(p).equals(term(q))) {
+      let S = simplifySum(sum(constant(p), constant(q)));
+      let res = simplifyProduct(prod(term(p), S));
+      if (isNum(res) && res.value() === 0) return [];
+      return [res];
+    }
+    if (order(q, p)) return [q, p];
+    return [p, q];
+  }
+  if (isSum(elts[0])) {
+    return mergeSums(elts[0].args, simplifySumRec(cdr(elts)));
+  }
+  return mergeSums([elts[0]], simplifySumRec(cdr(elts)));
+}
+
+function simplifySum(u: Sum) {
+  const elts = u.args;
+  if (elts.length === 1) return elts[0];
+  let res = simplifySumRec(elts);
+  if (res.length === 0) return int(0);
+  if (res.length === 1) return res[0];
+  return sum(...res);
+}
+
+/** Where p and q are lists of factors of products, merges the two lists. */
+function mergeProducts(pElts: MathObj[], qElts: MathObj[]): MathObj[] {
+  if (pElts.length === 0) return qElts;
+  if (qElts.length === 0) return pElts;
+  let p = pElts[0];
+  let ps = cdr(pElts);
+
+  let q = qElts[0];
+  let qs = cdr(qElts);
+
+  let res = simplifyProductRec([p, q]);
+  if (res.length === 0) return mergeProducts(ps, qs);
+  if (res.length === 1) return cons(mergeProducts(ps, qs), res[0]);
+
+  if (argsEqual(res, [p, q])) {
+    return cons(mergeProducts(ps, qElts), p);
+  }
+
+  if (argsEqual(res, [q, p])) {
+    return cons(mergeProducts(pElts, qs), q);
+  }
+
+  throw algebraError("mergeProducts failed");
+}
+
+/** Simplifies a product recursively. */
+function simplifyProductRec(elts: MathObj[]): MathObj[] {
+  if (elts.length === 2) {
+    if (isProduct(elts[0]) && isProduct(elts[1])) {
+      return mergeProducts(elts[0].args, elts[1].args);
+    }
+    if (isProduct(elts[0])) {
+      return mergeProducts(elts[0].args, [elts[1]]);
+    }
+    if (isProduct(elts[1])) {
+      return mergeProducts([elts[0]], elts[1].args);
+    }
+    if (
+      (isInt(elts[0]) || isFrac(elts[0])) &&
+      (isInt(elts[1]) || isFrac(elts[1]))
+    ) {
+      let P = simplifyRNE(prod(elts[0], elts[1]));
+      if (isNum(P) && P.value() === 1) {
+        return [];
+      }
+      return [P];
+    }
+    if (isNum(elts[0]) && elts[0].value() === 1) return [elts[1]];
+    if (isNum(elts[1]) && elts[1].value() === 1) return [elts[0]];
+
+    let p = elts[0];
+    let q = elts[1];
+
+    if (base(p).equals(base(q))) {
+      // clog(exponent(p).toString());
+      // clog(exponent(q).toString());
+      let S = simplifySum(sum(exponent(p), exponent(q)));
+      let res = simplifyPower(pow(base(p), S));
+      if (isNum(res) && res.value() === 1) return [];
+      return [res];
+    }
+    if (order(q, p)) return [q, p];
+    return [p, q];
+  }
+  if (isProduct(elts[0])) {
+    return mergeProducts(elts[0].args, simplifyProductRec(cdr(elts)));
+  }
+  return mergeProducts([elts[0]], simplifyProductRec(cdr(elts)));
+}
+
+function simplifyProduct(u: Product): MathObj {
+  const L = u.args;
+  for (let i = 0; i < L.length; i++) {
+    let arg = L[i];
+    // SPRD-1
+    if (isUndefined(arg)) {
+      return UNDEFINED();
+    }
+    // SPRD-2
+    if (isNum(arg) && arg.isZero()) {
+      return int(0);
+    }
+  }
+  let res = simplifyProductRec(u.args);
+  if (res.length === 0) return int(1);
+  if (res.length === 1) return res[0];
+  return prod(...res);
+}
+
+/** Simplifies a power expression. */
+function simplifyPower(u: Power): MathObj {
+  let v = u.base;
+  let w = u.exponent;
+  if (isNum(v) && v.value() === 0) return int(0);
+  if (isNum(v) && v.value() === 1) return int(1);
+  if (isNum(w) && w.value() === 0) return int(1);
+  if (isNum(w) && w.value() === 1) return v;
+
+  let n = w;
+  if ((isInt(v) || isFrac(v)) && isInt(n)) {
+    return simplifyRNE(pow(v, n));
+  }
+  if (isPower(v) && isInt(w)) {
+    let P = simplifyProduct(prod(v.exponent, w));
+    return simplifyPower(pow(v.base, P));
+  }
+  if (isProduct(v) && isInt(w)) {
+    const out = v.map((elt) => pow(elt, w));
+    return out;
+  }
+  return pow(v, w);
+}
+
+function simplifyQuotient(u: Quotient) {
+  const elts0 = u.args[0];
+  const elts1 = u.args[1];
+  let P = simplifyPower(pow(elts1, int(-1)));
+  return simplifyProduct(prod(elts0, P));
+}
+
+function simplifyDiff(u: Difference) {
+  if (u.args.length === 1) {
+    return simplifyProduct(prod(int(-1), u.args[0]));
+  }
+  if (u.args.length === 2) {
+    let x = prod(int(-1), u.args[1]);
+    return simplifySum(sum(u.args[0], x));
+  }
+  throw algebraError("simplifyDiff failed");
+}
+
+function simplify(u: MathObj): MathObj {
+  if (isInt(u) || isSym(u)) {
+    return u;
+  } else if (isFrac(u)) {
+    return simplifyRationalNumber(u);
+  } else {
+    let v = u.map(simplify);
+    if (isPower(v)) {
+      return simplifyPower(v);
+    } else if (isProduct(v)) {
+      return simplifyProduct(v);
+    } else if (isSum(v)) {
+      return simplifySum(v);
+    } else if (isQuotient(v)) {
+      return simplifyQuotient(v);
+    } else if (isDiff(v)) {
+      return simplifyDiff(v);
+    } else if (isFunc(v)) {
+      throw algebraError("simplifyFunc not implemented");
+    } else {
+      throw algebraError("unrecognized math object passed to simplify");
+    }
+  }
+}
+
+const a = `5a + a`;
 const ax = expr(a);
+const sx = simplify(ax.obj());
 clog(ax.ast());
+clog(sx.toString());
 
 // const bx = expr(b).obj();
 // const ab = order(ax, bx);
