@@ -193,6 +193,11 @@ function binode<T>(data: T | null = null) {
   return new Binode(data);
 }
 
+/** Returns a tuple. */
+function tuple<T extends any[]>(...data: T) {
+  return data;
+}
+
 class LinkedList<T> {
   private head: Binode<T>;
   private tail: Binode<T>;
@@ -1364,7 +1369,290 @@ function isExponential(u: any): u is Exponential {
   return u instanceof Exponential;
 }
 
-// § Graphics
+type PARValue =
+  | `${
+      | "xMinYMin"
+      | "xMidYMin"
+      | "xMaxYMin"
+      | "xMinYMid"
+      | "xMidYMid"
+      | "xMaxYMid"
+      | "xMinYMax"
+      | "xMidYMax"
+      | "xMaxYMax"} ${"meet" | "slice"}`
+  | "none";
+
+// § GRAPHICS
+class Fig2D {
+  /** This figure's preserve aspect ratio value. */
+  $preserveAspectRatio: PARValue = "xMidYMid meet";
+
+  /** Sets this figure's perserve aspect ratio value. */
+  preserveAspectRatio(value: PARValue) {
+    this.$preserveAspectRatio = value;
+    return this;
+  }
+
+  /** The width of this SVG. */
+  $width: number = 500;
+
+  /** Sets the width of this SVG. */
+  width(value: number) {
+    this.$width = value;
+    return this;
+  }
+
+  /** The height of this SVG. */
+  $height: number = 500;
+
+  /** Sets the height of this SVG. */
+  height(value: number) {
+    this.$height = value;
+    return this;
+  }
+
+  /** The domain that x-axis points should be interpolated to. */
+  $domain: [number, number] = [-10, 10];
+
+  /** Sets this figure's domain. */
+  domain(xMin: number, xMax: number) {
+    this.$domain = [xMin, xMax];
+    return this;
+  }
+
+  /** The range that x-axis points should be interpolated to. */
+  $range: [number, number] = [-10, 10];
+
+  /** Sets this figure's range. */
+  range(yMin: number, yMax: number) {
+    this.$range = [yMin, yMax];
+    return this;
+  }
+}
+
+/** An enum of types mapped to SVG path command prefixes. */
+enum pc {
+  M,
+  L,
+  H,
+  V,
+  Q,
+  C,
+  A,
+  Z,
+}
+abstract class PathCommand {
+  $type: pc;
+  $end: Vector;
+  constructor(type: pc, end: Vector) {
+    this.$type = type;
+    this.$end = end;
+  }
+
+  /** Returns this command as a string, per SVG grammar. */
+  abstract toString(): string;
+
+  /** Returns a new M-command. */
+  static M(x: number, y: number, z: number = 1) {
+    return new MCommand(x, y, z);
+  }
+
+  /** Returns a new L-command. */
+  static L(x: number, y: number, z: number = 1) {
+    return new LCommand(x, y, z);
+  }
+
+  /** Returns a new Z-command. */
+  static Z() {
+    return new ZCommand();
+  }
+
+  /** Returns a new V-command. */
+  static V(x: number, y: number, z: number = 1) {
+    return new VCommand(x, y, z);
+  }
+
+  /** Returns a new H-command. */
+  static H(x: number, y: number, z: number = 1) {
+    return new HCommand(x, y, z);
+  }
+
+  /** Returns a new Q-command. */
+  static Q(x: number, y: number, z: number = 1) {
+    return new QCommand(x, y, z);
+  }
+
+  /** Returns a new C-command. */
+  static C(x: number, y: number, z: number = 1) {
+    return new CCommand(x, y, z);
+  }
+
+  /** Returns a new A-command. */
+  static A(x:number, y:number, z:number=1) {
+    return new ACommand(x,y,z);
+  }
+}
+
+/** An object corresponding to an SVG M-command. */
+class MCommand extends PathCommand {
+  $type: pc.M;
+  constructor(x: number, y: number, z: number) {
+    super(pc.M, vector([x, y, z]));
+    this.$type = pc.M;
+  }
+  toString(): string {
+    return `M${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+/** An object corresponding to an SVG L-command. */
+class LCommand extends PathCommand {
+  $type: pc.L;
+  constructor(x: number, y: number, z: number) {
+    super(pc.L, vector([x, y, z]));
+    this.$type = pc.L;
+  }
+  toString(): string {
+    return `L${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+/** An object corresponding to an SVG Z-command. */
+class ZCommand extends PathCommand {
+  $type: pc.Z;
+  constructor() {
+    super(pc.Z, vector([0, 0, 0]));
+    this.$type = pc.Z;
+  }
+  toString(): string {
+    return "Z";
+  }
+}
+
+/** An object corresponding to an SVG V-command. */
+class VCommand extends PathCommand {
+  $type: pc.V;
+  constructor(x: number, y: number, z: number) {
+    super(pc.V, vector([x, y, z]));
+    this.$type = pc.V;
+  }
+  toString(): string {
+    return `V${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+/** An object corresponding to an SVG H-command. */
+class HCommand extends PathCommand {
+  $type: pc.H;
+  constructor(x: number, y: number, z: number) {
+    super(pc.H, vector([x, y, z]));
+    this.$type = pc.H;
+  }
+  toString(): string {
+    return `H${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+/** An object corresponding to an SVG Q-command. */
+class QCommand extends PathCommand {
+  $type: pc.Q;
+  $ctrl1: Vector;
+  constructor(x: number, y: number, z: number) {
+    super(pc.Q, vector([x, y, z]));
+    this.$type = pc.Q;
+    this.$ctrl1 = vector([x, y, z]);
+  }
+  ctrlPoint(x: number, y: number, z: number = 1) {
+    const out = new QCommand(this.$end.$x, this.$end.$y, this.$end.$z);
+    out.$ctrl1 = vector([x, y, z]);
+    return out;
+  }
+  toString(): string {
+    return `Q${this.$ctrl1.$x},${this.$ctrl1.$y},${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+/** An object corresponding to an SVG C-command. */
+class CCommand extends PathCommand {
+  $type: pc.C;
+  $ctrl1: Vector;
+  $ctrl2: Vector;
+  constructor(x: number, y: number, z: number) {
+    super(pc.C, vector([x, y, z]));
+    this.$type = pc.C;
+    this.$ctrl1 = vector([0, 0, 1]);
+    this.$ctrl2 = vector([0, 0, 1]);
+  }
+  copy() {
+    const out = new CCommand(this.$end.$x, this.$end.$y, this.$end.$z);
+    out.$ctrl1 = this.$ctrl1.copy();
+    out.$ctrl2 = this.$ctrl2.copy();
+    return out;
+  }
+  ctrl1(x: number, y: number, z: number = 1) {
+    const out = this.copy();
+    out.$ctrl1 = vector([x, y, z]);
+    return out;
+  }
+  ctrl2(x: number, y: number, z: number = 1) {
+    const out = this.copy();
+    out.$ctrl2 = vector([x, y, z]);
+    return out;
+  }
+  toString(): string {
+    return `C${this.$ctrl1.$x},${this.$ctrl1.$y},${this.$ctrl2.$x},${this.$ctrl2.$y},${this.$end.$x},${this.$end.$y}`;
+  }
+}
+
+class ACommand extends PathCommand {
+  $type: pc.A;
+  $rx: number = 1;
+  $ry: number = 1;
+  $rotation: number = 0;
+  $largeArc: 0 | 1 = 0;
+  $sweep: 0 | 1 = 0;
+  constructor(x: number, y: number, z: number) {
+    super(pc.A, vector([x, y, z]));
+    this.$type = pc.A;
+  }
+  /** Sets this A-command's large-arc flag. */
+  largeArc(value: 0 | 1) {
+    this.$largeArc = value;
+    return this;
+  }
+  /** Sets this A-command's sweep flag. */
+  sweep(value: 0|1) {
+    this.$sweep = value;
+    return this;
+  }
+  /** Sets this A-command's rx value. */
+  rx(value:number) {
+    this.$rx = value;
+    return this;
+  }
+  /** Sets this A-command's ry value. */
+  ry(value:number) {
+    this.$ry = value;
+    return this;
+  }
+  /** Sets this A-command's rotation value. */
+  rotate(value:number) {
+    this.$rotation = value;
+    return this;
+  }
+  toString(): string {
+    const out = [
+      this.$rx,
+      this.$ry,
+      this.$rotation,
+      this.$largeArc,
+      this.$sweep,
+      this.$end.$x,
+      this.$end.$y,
+    ].join(",");
+    return "A" + out;
+  }
+}
 
 /** A value native to Winnow. */
 type Primitive =
@@ -3872,116 +4160,6 @@ function simplify(expression: MathObj | string): MathObj {
 function toMathObj(expression: MathObj | string): MathObj {
   return typeof expression === "string" ? exp(expression).obj() : expression;
 }
-
-/** Returns true if the given expression is a single-variable (SV) monomial in the given variable, false otherwise. */
-function isMonomialSV(
-  expression: MathObj | string,
-  variable: Sym | string
-): boolean {
-  const u = toMathObj(expression);
-  const x = typeof variable === "string" ? sym(variable) : variable;
-  if (isInt(u) || isFrac(u)) {
-    return true;
-  }
-  if (isSym(u) && u.sym === x.sym) {
-    return true;
-  }
-  if (isPower(u)) {
-    return isInt(u.exponent) && u.exponent.int > 1;
-  }
-  if (isProduct(u) && u.args.length === 2) {
-    return isMonomialSV(u.args[0], x) && isMonomialSV(u.args[1], x);
-  }
-  return false;
-}
-
-/** Returns true if the given expression is a single-variable (SV) polynomial in the given variable, false otherwise. */
-function isPolynomialSV(expression: MathObj | string, variable: Sym | string) {
-  let u = toMathObj(expression);
-  u = simplify(u);
-  const x = typeof variable === "string" ? sym(variable) : variable;
-  if (isMonomialSV(u, x)) return true;
-  if (isSum(u)) {
-    let out = true;
-    for (let i = 0; i < u.args.length; i++) {
-      out = out && isMonomialSV(u.args[i], x);
-    }
-    return out;
-  }
-}
-
-function negate(u: MathObj) {
-  return diff(u);
-}
-
-/** Returns the degree of the single variable monomial expression in the given variable. If the expression is not a monomial in x, returns the symbol UNDEFINED.  */
-function degMonomialSV(
-  expression: MathObj | string,
-  variable: Sym | string
-): Int | Infty | Undefined {
-  let u = toMathObj(expression);
-  u = simplify(u);
-  const x = typeof variable === "string" ? sym(variable) : variable;
-  if (isInt(u) && u.int === 0) {
-    return (INFINITY('-'));
-  }
-  if (isInt(u) || isFrac(u)) {
-    return int(0);
-  }
-  if (u.equals(x)) {
-    return int(1);
-  }
-  if (isPower(u)) {
-    let base = u.base;
-    let exponent = u.exponent;
-    if (base.equals(x) && isInt(exponent) && exponent.int > 1) {
-      return exponent;
-    }
-  } else if (isProduct(u)) {
-    if ((u.args.length = 2)) {
-      let s = degMonomialSV(u.args[0], x);
-      let t = degMonomialSV(u.args[1], x);
-      if (!isUndefined(s) && !isUndefined(t)) {
-        return t;
-      }
-    }
-  }
-  return UNDEFINED();
-}
-
-/** Returns the degree of the single-variable expression in the given variable. */
-function degSV(
-  expression: MathObj | string,
-  variable: Sym | string
-): Undefined | Infty | Int {
-  let u = toMathObj(expression);
-  u = simplify(u);
-  const x = typeof variable === "string" ? sym(variable) : variable;
-  let d = degMonomialSV(u, x);
-  if (!isUndefined(d)) {
-    return d;
-  }
-  if (isSum(u)) {
-    let d = 0;
-    for (let i = 0; i < u.args.length; i++) {
-      let f = degMonomialSV(u.args[i], x);
-      if (isUndefined(f)) {
-        return UNDEFINED();
-      }
-      if (isInt(f)) {
-        d = Math.max(d, f.int);
-      }
-    }
-    return int(d);
-  }
-  return UNDEFINED();
-}
-
-function leadingCoefficientSV() {}
-
-const e = `3x^8 - 5x^12 + 9x + 3`;
-const test = degSV(e, "x");
-clog(test);
 
 function freeof(expression1: MathObj | string, expression2: MathObj | string) {
   let u =
