@@ -2532,6 +2532,7 @@ enum expression_type {
 
 abstract class MathObj {
   isSimplified: boolean = false;
+  abstract operands(): MathObj[];
   markSimplified() {
     this.isSimplified = true;
     return this;
@@ -2562,6 +2563,9 @@ function argsEqual(a: MathObj[], b: MathObj[]) {
 }
 
 class Relation extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.relation;
   }
@@ -2600,6 +2604,9 @@ function isRelation(u: MathObj): u is Relation {
 }
 
 class Boolean extends MathObj {
+  operands(): MathObj[] {
+    return [];
+  }
   kind(): expression_type {
     return expression_type.boolean;
   }
@@ -2633,12 +2640,19 @@ function isBool(u: MathObj): u is Boolean {
 
 abstract class Numeric extends MathObj {
   abstract value(): number;
+  abstract negate(): Numeric;
   isZero() {
     return this.value() === 0;
   }
 }
 
 class Int extends Numeric {
+  negate(): Int {
+    return int(-this.int);
+  }
+  operands(): MathObj[] {
+    return [];
+  }
   value(): number {
     return this.int;
   }
@@ -2685,6 +2699,12 @@ function isInt(u: MathObj): u is Int {
 }
 
 class Float64 extends Numeric {
+  negate(): Numeric {
+    return float64(-this.float);
+  }
+  operands(): MathObj[] {
+    return [];
+  }
   value(): number {
     return this.float;
   }
@@ -2722,6 +2742,9 @@ function isFloat64(u: MathObj): u is Float64 {
 }
 
 class Sym extends MathObj {
+  operands(): MathObj[] {
+    return [];
+  }
   kind(): expression_type {
     return expression_type.symbol;
   }
@@ -2748,6 +2771,9 @@ class Sym extends MathObj {
 }
 
 class Undefined extends MathObj {
+  operands(): MathObj[] {
+    return [];
+  }
   kind(): expression_type {
     return expression_type.undefined;
   }
@@ -2784,6 +2810,9 @@ function isSym(u: MathObj): u is Sym {
 }
 
 class Fraction extends Numeric {
+  operands(): MathObj[] {
+    return [];
+  }
   /** Simplifies the given fraction. */
   static simplify(frac: Fraction) {
     const numerator = frac.numerator.int;
@@ -2910,6 +2939,9 @@ function isFrac(u: MathObj): u is Fraction {
 }
 
 class Sum extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.sum;
   }
@@ -2921,7 +2953,16 @@ class Sum extends MathObj {
     }
   }
   toString(): string {
-    const out = this.args.map((arg) => arg.toString()).join(" + ");
+    let out = this.args.map((arg) => arg.toString()).join(" + ");
+    if (
+      this.args.length === 2 &&
+      isNum(this.args[1]) &&
+      this.args[1].value() < 0
+    ) {
+      const left = this.args[0].toString();
+      const right = this.args[1].negate().toString();
+      out = `${left} - ${right}`;
+    }
     return this.parenLevel ? `(${out})` : out;
   }
   map<T extends MathObj>(
@@ -2947,6 +2988,9 @@ function isSum(u: MathObj): u is Sum {
 }
 
 class Difference extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.difference;
   }
@@ -2984,6 +3028,9 @@ function isDiff(u: MathObj): u is Difference {
 }
 
 class Product extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.product;
   }
@@ -3021,6 +3068,9 @@ function isProduct(u: MathObj): u is Product {
 }
 
 class Quotient extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.quotient;
   }
@@ -3058,6 +3108,9 @@ function isQuotient(u: MathObj): u is Quotient {
 }
 
 class Power extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.power;
   }
@@ -3069,7 +3122,15 @@ class Power extends MathObj {
     }
   }
   toString(): string {
-    const out = this.args.map((arg) => arg.toString()).join("^");
+    let left = this.base.toString();
+    let right = this.exponent.toString();
+    if (!isAtom(this.exponent)) {
+      right = `(${right})`;
+    }
+    if (isNum(this.exponent) && (this.exponent.value() < 0)) {
+      right = `(${right})`;
+    }
+    const out = `${left}^${right}`;
     return this.parenLevel ? `(${out})` : out;
   }
   map<T extends MathObj>(
@@ -3114,6 +3175,9 @@ function isPower(u: MathObj): u is Power {
 }
 
 class Func extends MathObj {
+  operands(): MathObj[] {
+    return this.args;
+  }
   kind(): expression_type {
     return expression_type.call;
   }
@@ -3154,250 +3218,8 @@ function isFunc(u: MathObj): u is Func {
   return u.kind() === expression_type.call;
 }
 
-function expr(source: string) {
-  const parse = () => {
-    let $current = 0;
-    let _tkns = lexical(source).stream();
-    if (_tkns.isLeft()) return _tkns;
-    const $tokens = _tkns.unwrap();
-
-    const consume = (type: token_type, message: string) => {
-      if (check(type)) return advance();
-      throw syntaxError(message, peek().$line);
-    };
-
-    const peek = () => {
-      return $tokens[$current];
-    };
-
-    const previous = () => {
-      return $tokens[$current - 1];
-    };
-
-    const atEnd = () => {
-      return $current >= $tokens.length;
-    };
-
-    const advance = () => {
-      if (!atEnd()) $current++;
-      return previous();
-    };
-
-    const check = (type: token_type) => {
-      if (atEnd()) return false;
-      return peek().$type === type;
-    };
-
-    const match = (...types: token_type[]) => {
-      for (let i = 0; i < types.length; i++) {
-        const type = types[i];
-        if (check(type)) {
-          advance();
-          return true;
-        }
-      }
-      return false;
-    };
-
-    const expression = () => {
-      return equality();
-    };
-
-    const equality = () => {
-      let left = compare();
-      while (match(token_type.bang_equal, token_type.equal_equal)) {
-        let op = previous();
-        let right = compare();
-        left = relate(op.$lexeme as RelationOperator, [left, right]);
-      }
-      return left;
-    };
-
-    const compare = (): MathObj => {
-      let left = addition();
-      while (
-        match(
-          token_type.greater,
-          token_type.greater_equal,
-          token_type.less,
-          token_type.less_equal
-        )
-      ) {
-        let op = previous();
-        let right = addition();
-        left = relate(op.$lexeme as RelationOperator, [left, right]);
-      }
-      return left;
-    };
-
-    const addition = (): MathObj => {
-      let left = subtraction();
-      while (match(token_type.plus)) {
-        let right = subtraction();
-        left = sum(left, right);
-      }
-      return left;
-    };
-
-    const subtraction = (): MathObj => {
-      let left = product();
-      while (match(token_type.minus)) {
-        let right = product();
-        left = diff(left, right);
-      }
-      return left;
-    };
-
-    const product = (): MathObj => {
-      let left = imul();
-      while (match(token_type.star)) {
-        let right = imul();
-        left = prod(left, right);
-      }
-      return left;
-    };
-
-    const imul = (): MathObj => {
-      let left = quotient();
-      if (
-        (isInt(left) || isFloat64(left)) &&
-        (check(token_type.symbol) || check(token_type.native))
-      ) {
-        let right = quotient();
-        left = prod(left, right);
-      }
-      return left;
-    };
-
-    const quotient = (): MathObj => {
-      let left = power();
-      while (match(token_type.slash)) {
-        let right = power();
-        left = quot(left, right);
-      }
-      return left;
-    };
-
-    const power = (): MathObj => {
-      let left = negate();
-      while (match(token_type.caret)) {
-        let right = negate();
-        left = pow(left, right);
-      }
-      return left;
-    };
-
-    const negate = (): MathObj => {
-      if (match(token_type.minus)) {
-        let right = factorial();
-        if (isInt(right)) {
-          right = int(-right.int);
-          return right;
-        } else if (isFloat64(right)) {
-          right = float64(-right.float);
-          return right;
-        } else {
-          return diff(right);
-        }
-      }
-      return factorial();
-    };
-
-    const factorial = (): MathObj => {
-      let left = call();
-      if (match(token_type.bang)) {
-        left = fn("!", [left]);
-      }
-      return left;
-    };
-
-    const call = (): MathObj => {
-      let left = primary();
-      while (true) {
-        if (match(token_type.left_paren)) {
-          left = finishCall(left);
-        } else {
-          break;
-        }
-      }
-      return left;
-    };
-
-    const finishCall = (callee: MathObj) => {
-      const args: MathObj[] = [];
-      if (!check(token_type.right_paren)) {
-        do {
-          args.push(expression());
-        } while (match(token_type.comma));
-      }
-      consume(token_type.right_paren, 'Expected ")" after arguments');
-      if (!isSym(callee)) {
-        throw syntaxError(
-          "Expected a symbol for function call",
-          previous().$line
-        );
-      }
-      return fn(callee.sym, args);
-    };
-
-    const primary = (): MathObj => {
-      if (match(token_type.boolean))
-        return bool(previous().$literal as boolean);
-      if (match(token_type.integer)) return int(previous().$literal as number);
-      if (match(token_type.float))
-        return float64(previous().$literal as number);
-      if (match(token_type.symbol)) return sym(previous().$lexeme);
-      if (match(token_type.native)) return sym(previous().$lexeme);
-      if (match(token_type.fraction)) {
-        const f = previous().$literal as FRACTION;
-        return frac(int(f.$n), int(f.$d));
-      }
-      if (match(token_type.left_paren)) {
-        let expr = expression();
-        consume(token_type.right_paren, `Expected a closing ")"`);
-        expr = expr.parend();
-        if (check(token_type.left_paren)) {
-          let right = expression();
-          return prod(expr, right);
-        }
-        return expr;
-      }
-      throw syntaxError(
-        `Unrecognized lexeme: ${peek().$lexeme}.`,
-        peek().$line
-      );
-    };
-
-    const run = () => {
-      try {
-        const result = expression();
-        return right(result);
-      } catch (error) {
-        return left(error as Err);
-      }
-    };
-
-    return run();
-  };
-
-  return {
-    ast() {
-      const res = parse();
-      if (res.isLeft()) {
-        return res.unwrap().toString();
-      } else {
-        return treestring(res.unwrap());
-      }
-    },
-    obj() {
-      const res = parse();
-      if (res.isLeft()) {
-        return UNDEFINED();
-      } else {
-        return res.unwrap();
-      }
-    },
-  };
+function isAtom(u: MathObj): u is Numeric | Sym {
+  return isNum(u) || isSym(u)
 }
 
 function simplifyRationalNumber(u: MathObj) {
@@ -3655,7 +3477,6 @@ function mergeSums(pElts: MathObj[], qElts: MathObj[]): MathObj[] {
   throw algebraError("mergeSums failed");
 }
 
-// TODO check that this is ok
 function simplifySumRec(elts: MathObj[]): MathObj[] {
   if (elts.length === 2) {
     if (isSum(elts[0]) && isSum(elts[1])) {
@@ -3811,6 +3632,9 @@ function simplifyPower(u: Power): MathObj {
   if (isNum(w) && w.value() === 1) return v;
 
   let n = w;
+  if ((isInt(v)) && isInt(n)) {
+    return int(v.int ** n.int);
+  }
   if ((isInt(v) || isFrac(v)) && isInt(n)) {
     return simplifyRNE(pow(v, n));
   }
@@ -3837,14 +3661,78 @@ function simplifyDiff(u: Difference) {
     return simplifyProduct(prod(int(-1), u.args[0]));
   }
   if (u.args.length === 2) {
-    let x = prod(int(-1), u.args[1]);
+    let x = simplifyProduct(prod(int(-1), u.args[1]));
     return simplifySum(sum(u.args[0], x));
   }
   throw algebraError("simplifyDiff failed");
 }
 
-function simplify(u: MathObj): MathObj {
-  if (isInt(u) || isSym(u)) {
+function simplifyFunction(u: Func): MathObj {
+  if (u.op === "log") {
+    if (u.args.length === 1) {
+      let x = simplify(u.args[0]);
+      // log 1 = 0
+      if (x.equals(int(1))) return int(0);
+      // log 0 = undefined
+      if (x.equals(int(0))) return UNDEFINED();
+      // log e = 1
+      if (x.equals(sym("e"))) return int(1);
+      if (isNum(x)) {
+        let res = Math.log(x.value());
+        if (Number.isInteger(res)) return int(res);
+        return float64(res);
+      }
+      return fn("log", [x]).markSimplified();
+    }
+    throw algebraError("log takes only one argument");
+  }
+  if (u.op === "sin") {
+    if (u.args.length === 1) {
+      let x = simplify(u.args[0]);
+      // sin of some number -> number
+      if (isNum(x)) {
+        let res = Math.sin(x.value());
+        if (Number.isInteger(res)) return int(res);
+        return float64(res);
+      }
+      // sin pi = 0
+      if (isSym(x)) {
+        if (x.sym === "pi") return int(0);
+        let res = Math.sin(Math.PI);
+        if (Number.isInteger(res)) return int(res);
+        return float64(res);
+      }
+      return fn("sin", [x]).markSimplified();
+    }
+    throw algebraError("sin takes only one argument");
+  }
+  if (u.op === "cos") {
+    if (u.args.length === 1) {
+      let x = simplify(u.args[0]);
+      // sin of some number -> number
+      if (isNum(x)) {
+        let res = Math.cos(x.value());
+        if (Number.isInteger(res)) return int(res);
+        return float64(res);
+      }
+      // sin pi = 0
+      if (isSym(x)) {
+        if (x.sym === "pi") return int(-1);
+        let res = Math.cos(Math.PI);
+        if (Number.isInteger(res)) return int(res);
+        return float64(res);
+      }
+      return fn("sin", [x]).markSimplified();
+    }
+    throw algebraError("sin takes only one argument");
+  }
+  return fn(u.op, u.args).markSimplified();
+}
+
+function simplify(expression: MathObj | string): MathObj {
+  const u =
+    typeof expression === "string" ? expr(expression).obj() : expression;
+  if (isInt(u) || isSym(u) || isUndefined(u) || u.isSimplified) {
     return u;
   } else if (isFrac(u)) {
     return simplifyRationalNumber(u);
@@ -3861,25 +3749,342 @@ function simplify(u: MathObj): MathObj {
     } else if (isDiff(v)) {
       return simplifyDiff(v);
     } else if (isFunc(v)) {
-      throw algebraError("simplifyFunc not implemented");
+      return simplifyFunction(v);
     } else {
       throw algebraError("unrecognized math object passed to simplify");
     }
   }
 }
 
-const a = `5a + a`;
-const ax = expr(a);
-const sx = simplify(ax.obj());
-clog(ax.ast());
-clog(sx.toString());
+function freeof(u: MathObj, t: MathObj) {
+  if (u.equals(t)) {
+    return false;
+  } else if (isNum(u) || isSym(u)) {
+    return true;
+  } else {
+    for (let i = 0; i < u.operands().length; i++) {
+      let arg = u.operands()[i];
+      if (!freeof(arg, t)) return false;
+    }
+    return true;
+  }
+}
 
-// const bx = expr(b).obj();
-// const ab = order(ax, bx);
-// clog(ab);
-// const h = reduce(expr(k).obj());
-// clog(j);
-// clog(h.toString());
+function expr(source: string) {
+  const parse = () => {
+    let $current = 0;
+    let _tkns = lexical(source).stream();
+    if (_tkns.isLeft()) return _tkns;
+    const $tokens = _tkns.unwrap();
+
+    const consume = (type: token_type, message: string) => {
+      if (check(type)) return advance();
+      throw syntaxError(message, peek().$line);
+    };
+
+    const peek = () => {
+      return $tokens[$current];
+    };
+
+    const previous = () => {
+      return $tokens[$current - 1];
+    };
+
+    const atEnd = () => {
+      return $current >= $tokens.length;
+    };
+
+    const advance = () => {
+      if (!atEnd()) $current++;
+      return previous();
+    };
+
+    const check = (type: token_type) => {
+      if (atEnd()) return false;
+      return peek().$type === type;
+    };
+
+    const match = (...types: token_type[]) => {
+      for (let i = 0; i < types.length; i++) {
+        const type = types[i];
+        if (check(type)) {
+          advance();
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const expression = () => {
+      return equality();
+    };
+
+    const equality = () => {
+      let left = compare();
+      while (match(token_type.bang_equal, token_type.equal_equal)) {
+        let op = previous();
+        let right = compare();
+        left = relate(op.$lexeme as RelationOperator, [left, right]);
+      }
+      return left;
+    };
+
+    const compare = (): MathObj => {
+      let left = addition();
+      while (
+        match(
+          token_type.greater,
+          token_type.greater_equal,
+          token_type.less,
+          token_type.less_equal
+        )
+      ) {
+        let op = previous();
+        let right = addition();
+        left = relate(op.$lexeme as RelationOperator, [left, right]);
+      }
+      return left;
+    };
+
+    const addition = (): MathObj => {
+      let left = subtraction();
+      while (match(token_type.plus)) {
+        let right = subtraction();
+        left = sum(left, right);
+      }
+      return left;
+    };
+
+    const subtraction = (): MathObj => {
+      let left = product();
+      while (match(token_type.minus)) {
+        let right = product();
+        left = diff(left, right);
+      }
+      return left;
+    };
+
+    const product = (): MathObj => {
+      let left = imul();
+      while (match(token_type.star)) {
+        let right = imul();
+        left = prod(left, right);
+      }
+      return left;
+    };
+
+    const imul = (): MathObj => {
+      let left = quotient();
+      if (
+        (isInt(left) || isFloat64(left)) &&
+        (check(token_type.symbol) || check(token_type.native))
+      ) {
+        let right = quotient();
+        left = prod(left, right);
+      }
+      return left;
+    };
+
+    const quotient = (): MathObj => {
+      let left = power();
+      while (match(token_type.slash)) {
+        let right = power();
+        left = quot(left, right);
+      }
+      return left;
+    };
+
+    const power = (): MathObj => {
+      let left = negate();
+      while (match(token_type.caret)) {
+        let right = negate();
+        left = pow(left, right);
+      }
+      return left;
+    };
+
+    const negate = (): MathObj => {
+      if (match(token_type.minus)) {
+        let right = factorial();
+        if (isInt(right)) {
+          right = int(-right.int);
+          return right;
+        } else if (isFloat64(right)) {
+          right = float64(-right.float);
+          return right;
+        } else {
+          return diff(right);
+        }
+      }
+      return factorial();
+    };
+
+    const factorial = (): MathObj => {
+      let left = call();
+      if (match(token_type.bang)) {
+        left = fn("!", [left]);
+      }
+      return left;
+    };
+
+    const call = (): MathObj => {
+      let left = primary();
+      while (true) {
+        if (match(token_type.left_paren)) {
+          left = finishCall(left);
+        } else {
+          break;
+        }
+      }
+      return left;
+    };
+
+    const finishCall = (callee: MathObj) => {
+      const args: MathObj[] = [];
+      if (!check(token_type.right_paren)) {
+        do {
+          args.push(expression());
+        } while (match(token_type.comma));
+      }
+      consume(token_type.right_paren, 'Expected ")" after arguments');
+      if (!isSym(callee)) {
+        throw syntaxError(
+          "Expected a symbol for function call",
+          previous().$line
+        );
+      }
+      return fn(callee.sym, args);
+    };
+
+    const primary = (): MathObj => {
+      if (match(token_type.boolean))
+        return bool(previous().$literal as boolean);
+      if (match(token_type.integer)) return int(previous().$literal as number);
+      if (match(token_type.float))
+        return float64(previous().$literal as number);
+      if (match(token_type.numeric_constant)) return sym(previous().$lexeme);
+      if (match(token_type.symbol)) return sym(previous().$lexeme);
+      if (match(token_type.native)) return sym(previous().$lexeme);
+      if (match(token_type.fraction)) {
+        const f = previous().$literal as FRACTION;
+        return frac(int(f.$n), int(f.$d));
+      }
+      if (match(token_type.left_paren)) {
+        let expr = expression();
+        consume(token_type.right_paren, `Expected a closing ")"`);
+        expr = expr.parend();
+        if (check(token_type.left_paren)) {
+          let right = expression();
+          return prod(expr, right);
+        }
+        return expr;
+      }
+      throw syntaxError(
+        `Unrecognized lexeme: ${peek().$lexeme}.`,
+        peek().$line
+      );
+    };
+
+    const run = () => {
+      try {
+        const result = expression();
+        return right(result);
+      } catch (error) {
+        return left(error as Err);
+      }
+    };
+
+    return run();
+  };
+
+  return {
+    /** Returns a pretty-print string of this expression's AST. */
+    ast() {
+      const res = parse();
+      if (res.isLeft()) {
+        return res.unwrap().toString();
+      } else {
+        return treestring(res.unwrap());
+      }
+    },
+    /** Returns this expression as a math object. */
+    obj() {
+      const res = parse();
+      if (res.isLeft()) {
+        return UNDEFINED();
+      } else {
+        return res.unwrap();
+      }
+    },
+    /** Returns this expression as an automatically simplified expression. */
+    simplify() {
+      return simplify(this.obj());
+    },
+  };
+}
+
+function deriv(expression: MathObj | string, variable: Sym | string): MathObj {
+  let u: MathObj =
+    typeof expression === "string" ? expr(expression).simplify() : expression;
+  let x: Sym = typeof variable === "string" ? sym(variable) : variable;
+  // deriv-1
+  if (isSym(u) && u.equals(x)) {
+    return int(1);
+  }
+  u = simplify(u);
+  if (isPower(u)) {
+    // u = v^w
+    let v = simplify(u.base);
+    let w = simplify(u.exponent);
+    let d = simplify(diff(w, int(1)));
+    return simplify(prod(w, pow(v, d)));
+  }
+  if (isQuotient(u)) {
+    let f = u.args[0];
+    let g = u.args[1];
+    let df = deriv(f,x);
+    let dg = deriv(g,x);
+    let dfg = prod(df,g);
+    let fdg = prod(f,dg);
+    let gx2 = pow(g,int(2));
+    let top = diff(dfg, fdg);
+    let bottom = gx2;
+    return simplify(quot(top,bottom));
+  }
+  if (isDiff(u)) {
+    let s = u.map(arg => deriv(arg,x));
+    return simplify(s);
+  }
+  if (isSum(u)) {
+    let s = u.map((arg) => deriv(arg, x));
+    return simplify(s);
+  }
+  if (isProduct(u)) {
+    let f = u.args[0];
+    let g = u.args[1];
+    let dg = deriv(g, x);
+    let df = deriv(f, x);
+    let left = prod(f, dg);
+    let right = prod(df, g);
+    return simplify(sum(left, right));
+  }
+  if (isFunc(u)) {
+    if (u.op === "deriv") return u;
+    if (u.op === "sin") {
+      let v = u.args[0];
+      let dvx = simplify(deriv(v, x));
+      let p = simplify(prod(fn("cos", [v]), dvx));
+      return p;
+    }
+  }
+  if (freeof(u, x)) {
+    return int(0);
+  }
+  return fn("deriv", [u, x]).markSimplified();
+}
+
+const test = "x^3 / (2x + 1)";
+clog(deriv(test, "x").toString());
 
 // § Nodekind Enum
 enum nodekind {
