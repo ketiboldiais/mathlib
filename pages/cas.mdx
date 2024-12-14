@@ -1,0 +1,26 @@
+---
+title: "Polynomials"
+description: "Notes on polynomials."
+date: "2024-12-14"
+---
+
+## Single Variable Polynomials
+
+__Definition.__ A polynomial ${u}$ in one variable ${x}$ is an expression of the form:
+
+$$
+    u = u_nx^n + u_{n-1}x^{n-1} + u_{n-2}x^{n-2} + \ldots + u_2x^2 + u_1x + x_0
+$$
+
+where the coefficients ${u_j,~ 0 \leq j \leq n}$ are rational numbers, and ${n}$ is a non-negative integer. When ${u_n \neq 0,}$ we call ${u_n}$ the __leading coefficient__ of ${u}$ and ${n}$ is its __degree__. The expression ${u \neq 0}$ is called the __zero polynomial__; it has leading coefficient ${0,}$ and, according to mathematical convention has degree ${-\infty.}$
+
+__Definition.__ Let ${u}$ be a polynomial and ${x}$ be a variable in ${u.}$ Then ${\text{lc}(u,x)}$ corresponds to the leading coefficient of ${u.}$ 
+
+__Definition.__ Let ${u}$ be a polynomial and ${x}$ be a variable in ${u.}$ Then ${\text{deg}(u,x)}$ corresponds to the degree of ${u.}$ 
+
+__Definition.__ Let ${u}$ be an algebraic expression and ${x}$ a variable in ${u.}$ Then ${u}$ is a monomial if and only if at least one of the following rules is satisfied:
+
+1. ${u}$ is an integer or fraction.
+2. ${u = x.}$
+3. ${u = x^n,}$ where ${n}$ is an integer.
+4. ${u}$ is a product with two operands that satisfies either (1), (2), or (3).

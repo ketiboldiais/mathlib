@@ -12,7 +12,7 @@ export default function Home() {
       <div>
         <p>
           Winnow is a scripting language designed for numerical analysis,
-          symbolic computation, and statistical analysis, and written in
+          symbolic computation, and statistical analysis, written in
           TypeScript. The pages below provide the language's documentation.
         </p>
         <ul>

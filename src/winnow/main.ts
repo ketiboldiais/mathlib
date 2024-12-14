@@ -3798,6 +3798,7 @@ function simplifyFunction(u: Func): MathObj {
   return fn(u.op, u.args).markSimplified();
 }
 
+/** Attempts to simplify the given algebraic expression. */
 function simplify(expression: MathObj | string): MathObj {
   const u = typeof expression === "string" ? exp(expression).obj() : expression;
   if (isInt(u) || isSym(u) || isUndefined(u) || u.isSimplified) {
@@ -3822,6 +3823,30 @@ function simplify(expression: MathObj | string): MathObj {
       throw algebraError("unrecognized math object passed to simplify");
     }
   }
+}
+
+/** Returns the given expression as a math object. */
+function toMathObj(expression: MathObj | string): MathObj {
+  return typeof expression === "string" ? exp(expression).obj() : expression;
+}
+
+/** Returns true if the given expression is a monomial, false otherwise. */
+function isMonomial(
+  expression: MathObj | string,
+  variable: Sym | string
+): boolean {
+  const u = toMathObj(expression);
+  const x = typeof variable === "string" ? sym(variable) : variable;
+  if (isInt(u) || isFrac(u)) {
+    return true;
+  }
+  if (isSym(u) && u.sym === x.sym) {
+    return true;
+  }
+  if (isProduct(u) && u.args.length === 2) {
+    return isMonomial(u.args[0], x) && isMonomial(u.args[1], x);
+  }
+  return false;
 }
 
 function freeof(expression1: MathObj | string, expression2: MathObj | string) {
@@ -7631,9 +7656,9 @@ class Compiler implements Visitor<Primitive> {
         case token_type.minus:
           return L - R;
         case token_type.rem:
-          return rem(L,R);
+          return rem(L, R);
         case token_type.mod:
-          return mod(L,R);
+          return mod(L, R);
         case token_type.percent:
           return percent(L, R);
         case token_type.div:

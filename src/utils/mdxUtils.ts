@@ -53,8 +53,7 @@ export const getLatestPostSummaries = cache(async () => {
             return {slug, ...(await getCompiledMDX(slug))};
         })
     );
-    posts.sort((a,b) => (a.frontmatter.date <b.frontmatter.date ? 1 : -1));
-
+    posts.sort((a,b) => (a.frontmatter.date > b.frontmatter.date ? 1 : -1));
     return posts.map((post) => ({slug: post.slug, ...post.frontmatter}));
 })
 

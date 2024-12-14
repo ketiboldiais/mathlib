@@ -23,11 +23,14 @@ const Container = ({ children }: Children) => {
   );
 };
 
-const InputCarat = ({ children }: Children) => {
+const InputCarat = ({
+  children,
+  color = "grey",
+}: Children & { color?: string }) => {
   return (
     <div
       style={{
-        color: "$f48fb1",
+        color,
         paddingRight: "8px",
       }}
     >
@@ -154,14 +157,16 @@ const REPL = ({ initialLines = [], height = 500 }: ReplProps) => {
               {line.value}
             </InputLine>
           ) : line.type === "output" ? (
-            <Output key={i}>out: {line.value}</Output>
+            <Output key={i}>
+              <span style={{ color: "grey" }}>out:</span> {line.value}
+            </Output>
           ) : (
             <Error key={i}>{line.value.toString()}</Error>
           )
         )}
       </TerminalContent>
       <ActiveInputLine>
-        <InputCarat>{"$:"}</InputCarat>
+        <InputCarat color="#88e788">{"$:"}</InputCarat>
         <input
           style={{
             color: "#fff",

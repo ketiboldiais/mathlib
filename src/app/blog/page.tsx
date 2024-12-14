@@ -3,7 +3,6 @@ import Link from "next/link";
 
 const BlogIndexPage = async () => {
     const posts = await getLatestPostSummaries();
-
     return (
         <div>
             <h1>Posts</h1>
