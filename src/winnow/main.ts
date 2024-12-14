@@ -2534,6 +2534,7 @@ enum expression_type {
   function,
   call,
   undefined,
+  infinity,
 }
 
 abstract class MathObj {
@@ -2798,6 +2799,48 @@ class Sym extends MathObj {
     super();
     this.sym = sym;
   }
+}
+
+class Infty extends MathObj {
+  operands(): MathObj[] {
+    return [];
+  }
+  operandAt(i: number): MathObj {
+    return UNDEFINED();
+  }
+  kind(): expression_type {
+    return expression_type.infinity;
+  }
+  equals(other: MathObj): boolean {
+    if (!isInfty(other)) {
+      return false;
+    } else {
+      return this.sign === other.sign;
+    }
+  }
+  toString(): string {
+    return `${this.sign}INFINITY`;
+  }
+  map<T extends MathObj>(
+    callbackfn: (value: MathObj, index: number, array: MathObj[]) => T
+  ): this {
+    return this;
+  }
+  sign: "+" | "-";
+  value: number;
+  constructor(sign: "+" | "-") {
+    super();
+    this.sign = sign;
+    this.value = sign === "+" ? Infinity : -Infinity;
+  }
+}
+
+function INFINITY(sign: "+" | "-") {
+  return new Infty(sign);
+}
+
+function isInfty(u: MathObj): u is Infty {
+  return u.kind() === expression_type.infinity;
 }
 
 class Undefined extends MathObj {
@@ -3830,8 +3873,8 @@ function toMathObj(expression: MathObj | string): MathObj {
   return typeof expression === "string" ? exp(expression).obj() : expression;
 }
 
-/** Returns true if the given expression is a monomial, false otherwise. */
-function isMonomial(
+/** Returns true if the given expression is a single-variable (SV) monomial in the given variable, false otherwise. */
+function isMonomialSV(
   expression: MathObj | string,
   variable: Sym | string
 ): boolean {
@@ -3843,11 +3886,102 @@ function isMonomial(
   if (isSym(u) && u.sym === x.sym) {
     return true;
   }
+  if (isPower(u)) {
+    return isInt(u.exponent) && u.exponent.int > 1;
+  }
   if (isProduct(u) && u.args.length === 2) {
-    return isMonomial(u.args[0], x) && isMonomial(u.args[1], x);
+    return isMonomialSV(u.args[0], x) && isMonomialSV(u.args[1], x);
   }
   return false;
 }
+
+/** Returns true if the given expression is a single-variable (SV) polynomial in the given variable, false otherwise. */
+function isPolynomialSV(expression: MathObj | string, variable: Sym | string) {
+  let u = toMathObj(expression);
+  u = simplify(u);
+  const x = typeof variable === "string" ? sym(variable) : variable;
+  if (isMonomialSV(u, x)) return true;
+  if (isSum(u)) {
+    let out = true;
+    for (let i = 0; i < u.args.length; i++) {
+      out = out && isMonomialSV(u.args[i], x);
+    }
+    return out;
+  }
+}
+
+function negate(u: MathObj) {
+  return diff(u);
+}
+
+/** Returns the degree of the single variable monomial expression in the given variable. If the expression is not a monomial in x, returns the symbol UNDEFINED.  */
+function degMonomialSV(
+  expression: MathObj | string,
+  variable: Sym | string
+): Int | Infty | Undefined {
+  let u = toMathObj(expression);
+  u = simplify(u);
+  const x = typeof variable === "string" ? sym(variable) : variable;
+  if (isInt(u) && u.int === 0) {
+    return (INFINITY('-'));
+  }
+  if (isInt(u) || isFrac(u)) {
+    return int(0);
+  }
+  if (u.equals(x)) {
+    return int(1);
+  }
+  if (isPower(u)) {
+    let base = u.base;
+    let exponent = u.exponent;
+    if (base.equals(x) && isInt(exponent) && exponent.int > 1) {
+      return exponent;
+    }
+  } else if (isProduct(u)) {
+    if ((u.args.length = 2)) {
+      let s = degMonomialSV(u.args[0], x);
+      let t = degMonomialSV(u.args[1], x);
+      if (!isUndefined(s) && !isUndefined(t)) {
+        return t;
+      }
+    }
+  }
+  return UNDEFINED();
+}
+
+/** Returns the degree of the single-variable expression in the given variable. */
+function degSV(
+  expression: MathObj | string,
+  variable: Sym | string
+): Undefined | Infty | Int {
+  let u = toMathObj(expression);
+  u = simplify(u);
+  const x = typeof variable === "string" ? sym(variable) : variable;
+  let d = degMonomialSV(u, x);
+  if (!isUndefined(d)) {
+    return d;
+  }
+  if (isSum(u)) {
+    let d = 0;
+    for (let i = 0; i < u.args.length; i++) {
+      let f = degMonomialSV(u.args[i], x);
+      if (isUndefined(f)) {
+        return UNDEFINED();
+      }
+      if (isInt(f)) {
+        d = Math.max(d, f.int);
+      }
+    }
+    return int(d);
+  }
+  return UNDEFINED();
+}
+
+function leadingCoefficientSV() {}
+
+const e = `3x^8 - 5x^12 + 9x + 3`;
+const test = degSV(e, "x");
+clog(test);
 
 function freeof(expression1: MathObj | string, expression2: MathObj | string) {
   let u =
