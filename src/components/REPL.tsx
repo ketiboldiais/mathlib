@@ -106,11 +106,12 @@ const TerminalContent = forwardRef<HTMLDivElement, TerminalContentProps>(
 type ReplLine = { type: "input" | "output" | "error"; value: string };
 type ReplProps = {
   initialLines: ReplLine[];
+  height: number;
 };
 
 let E = engine();
 
-const REPL = ({ initialLines = [] }: ReplProps) => {
+const REPL = ({ initialLines = [], height = 500 }: ReplProps) => {
   const [lines, setLines] = useState(initialLines);
   const execAndGetLine = (execline: string): ReplLine => {
     if (!execline.trim()) {
@@ -145,22 +146,22 @@ const REPL = ({ initialLines = [] }: ReplProps) => {
   }, [lines]);
   return (
     <Container>
-      <TerminalContent height={500} ref={terminalContentRef}>
+      <TerminalContent height={height} ref={terminalContentRef}>
         {lines.map((line, i) =>
           line.type === "input" ? (
             <InputLine key={i}>
-              <InputCarat>{">"}</InputCarat>
+              <InputCarat>{"in:"}</InputCarat>
               {line.value}
             </InputLine>
           ) : line.type === "output" ? (
-            <Output key={i}>{line.value}</Output>
+            <Output key={i}>out: {line.value}</Output>
           ) : (
             <Error key={i}>{line.value.toString()}</Error>
           )
         )}
       </TerminalContent>
       <ActiveInputLine>
-        <InputCarat>{">"}</InputCarat>
+        <InputCarat>{"$:"}</InputCarat>
         <input
           style={{
             color: "#fff",

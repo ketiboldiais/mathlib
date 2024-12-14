@@ -5,25 +5,29 @@ const posts = await getLatestPostSummaries();
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
+    <div>
+      <main>
+        <h2>Winnow</h2>
       </main>
-        <div>
-        <p>This is a collection of math and computer science notes.</p>
-            <ul>
-                {posts.map((post) => (
-                    <li key={post.slug} className="border border-sky-500">
-                        <Link href={`/blog/${post.slug}`}>
-                            <h2>{post.title}</h2>
-                            <p>{post.description}</p>
-                            <p>{new Date(post.date).toDateString()}</p>
-                        </Link>
-                    </li>
-                ))}
-            </ul>
-        </div>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-      </footer>
+      <div>
+        <p>
+          Winnow is a scripting language designed for numerical analysis,
+          symbolic computation, and statistical analysis, and written in
+          TypeScript. The pages below provide the language's documentation.
+        </p>
+        <ul>
+          {posts.map((post) => (
+            <li key={post.slug} className="postlink">
+              <Link href={`/blog/${post.slug}`}>
+                <h2>{post.title}</h2>
+                <p>{post.description}</p>
+                <p>Last updated: {new Date(post.date).toDateString()}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center"></footer>
     </div>
   );
 }

@@ -629,9 +629,13 @@ function iquot(a: number, b: number) {
   return b === 0 ? NaN : Math.floor(a / b);
 }
 
+function rem(n: number, m: number) {
+  return n % m;
+}
+
 /** Returns a % b. */
-function mod(dividend: number, divisor: number) {
-  return ((dividend % divisor) + divisor) % divisor;
+function mod(n: number, m: number) {
+  return ((n % m) + m) % m;
 }
 
 /** Returns the a% of b. */
@@ -1370,11 +1374,13 @@ type Primitive =
   | boolean
   | bigint
   | Exponential
+  | MathObj
   | FRACTION
   | Obj
   | Vector
   | Matrix
   | LinkedList<Primitive>
+  | Primitive[]
   | Fn
   | Class
   | Err;
@@ -1447,7 +1453,6 @@ enum token_type {
   inf,
   nil,
   numeric_constant,
-  algebraic,
   // Keyword Tokens
   and,
   or,
@@ -1631,6 +1636,7 @@ function token<X extends token_type>(
 }
 
 // § Native Function Types
+type NativeAlgebraicOp = "subexs" | "simplify";
 
 type NativeUnary =
   | "ceil"
@@ -1646,7 +1652,6 @@ type NativeUnary =
   | "arccos"
   | "arcsinh"
   | "arctan"
-  | "exp"
   | "sinh"
   | "sqrt"
   | "tanh"
@@ -1657,7 +1662,7 @@ type NativeUnary =
 /** A native function that takes more than 1 argument. */
 type NativePolyAry = "max" | "min";
 
-type NativeFn = NativeUnary | NativePolyAry;
+type NativeFn = NativeUnary | NativePolyAry | NativeAlgebraicOp;
 
 type NativeConstants =
   | "e"
@@ -1894,10 +1899,11 @@ export function lexical(code: string) {
    * of arguments the function takes).
    */
   const nativeFunctions: Record<NativeFn, number> = {
+    simplify: 1,
+    subexs: 1,
     avg: 1,
     gcd: 1,
     sqrt: 1,
-    exp: 1,
     ceil: 1,
     tanh: 1,
     floor: 1,
@@ -2551,6 +2557,10 @@ abstract class MathObj {
   ): this;
 }
 
+function isMathObj(u: any): u is MathObj {
+  return u instanceof MathObj;
+}
+
 type RelationOperator = "=" | "<" | ">" | "<=" | ">=" | "!=";
 
 function argsEqual(a: MathObj[], b: MathObj[]) {
@@ -2812,6 +2822,11 @@ class Undefined extends MathObj {
     return this;
   }
   sym: "UNDEFINED";
+  error: string = "";
+  setError(value: string) {
+    this.error = value;
+    return this;
+  }
   constructor() {
     super();
     this.sym = "UNDEFINED";
@@ -3643,8 +3658,6 @@ function simplifyProductRec(elts: MathObj[]): MathObj[] {
     let q = elts[1];
 
     if (base(p).equals(base(q))) {
-      // clog(exponent(p).toString());
-      // clog(exponent(q).toString());
       let S = simplifySum(sum(exponent(p), exponent(q)));
       let res = simplifyPower(pow(base(p), S));
       if (isNum(res) && res.value() === 1) return [];
@@ -3786,8 +3799,7 @@ function simplifyFunction(u: Func): MathObj {
 }
 
 function simplify(expression: MathObj | string): MathObj {
-  const u =
-    typeof expression === "string" ? expr(expression).obj() : expression;
+  const u = typeof expression === "string" ? exp(expression).obj() : expression;
   if (isInt(u) || isSym(u) || isUndefined(u) || u.isSimplified) {
     return u;
   } else if (isFrac(u)) {
@@ -3814,9 +3826,9 @@ function simplify(expression: MathObj | string): MathObj {
 
 function freeof(expression1: MathObj | string, expression2: MathObj | string) {
   let u =
-    typeof expression1 === "string" ? expr(expression1).obj() : expression1;
+    typeof expression1 === "string" ? exp(expression1).obj() : expression1;
   let t =
-    typeof expression2 === "string" ? expr(expression2).obj() : expression2;
+    typeof expression2 === "string" ? exp(expression2).obj() : expression2;
   if (u.equals(t)) {
     return false;
   } else if (isNum(u) || isSym(u)) {
@@ -3830,7 +3842,7 @@ function freeof(expression1: MathObj | string, expression2: MathObj | string) {
   }
 }
 
-function expr(source: string) {
+function exp(source: string) {
   const parse = () => {
     let $current = 0;
     let _tkns = lexical(source).stream();
@@ -4071,7 +4083,8 @@ function expr(source: string) {
     obj() {
       const res = parse();
       if (res.isLeft()) {
-        return UNDEFINED();
+        const r = res.unwrap().message;
+        return UNDEFINED().setError(r);
       } else {
         return res.unwrap();
       }
@@ -4097,8 +4110,7 @@ function union<T>(setA: Set<T>, setB: Set<T>) {
 
 function subexs(expression: MathObj | string) {
   const f = (expression: MathObj | string): Set<string> => {
-    let u =
-      typeof expression === "string" ? expr(expression).obj() : expression;
+    let u = typeof expression === "string" ? exp(expression).obj() : expression;
     if (isAtom(u)) {
       return cset(u.toString());
     } else {
@@ -4115,7 +4127,7 @@ function subexs(expression: MathObj | string) {
 
 function deriv(expression: MathObj | string, variable: Sym | string): MathObj {
   let u: MathObj =
-    typeof expression === "string" ? expr(expression).simplify() : expression;
+    typeof expression === "string" ? exp(expression).simplify() : expression;
   let x: Sym = typeof variable === "string" ? sym(variable) : variable;
   // deriv-1
   if (isSym(u) && u.equals(x)) {
@@ -4172,9 +4184,6 @@ function deriv(expression: MathObj | string, variable: Sym | string): MathObj {
   }
   return fn("deriv", [u, x]).markSimplified();
 }
-
-const test = "a * (x + 1) + 3 * cos(y)";
-clog(subexs(test));
 
 // § Nodekind Enum
 enum nodekind {
@@ -4597,9 +4606,9 @@ class AlgebraString extends Expr {
   toString(): string {
     return this.$expression.toString();
   }
-  $expression: Expr;
+  $expression: MathObj;
   $op: Token;
-  constructor(expression: Expr, op: Token) {
+  constructor(expression: MathObj, op: Token) {
     super();
     this.$expression = expression;
     this.$op = op;
@@ -4607,7 +4616,7 @@ class AlgebraString extends Expr {
 }
 
 /** Returns a new algebra string node. */
-function $algebraString(expression: Expr, op: Token) {
+function $algebraString(expression: MathObj, op: Token) {
   return new AlgebraString(expression, op);
 }
 
@@ -6035,12 +6044,13 @@ export function syntax(source: string) {
       op.isType(token_type.algebra_string) &&
       typeof op.$literal === "string"
     ) {
-      const tkns = op.$literal;
+      const algebraString = op.$literal;
       const t = token(token_type.algebra_string, "", op.$line);
-      const result = syntax(tkns).parsex();
-      if (result.isLeft()) return result;
-      const expression = result.unwrap();
-      return state.newExpr($algebraString(expression, op));
+      const result = exp(algebraString).obj();
+      if (isUndefined(result)) {
+        return state.error(result.error, t.$line);
+      }
+      return state.newExpr($algebraString(result, op));
     } else {
       return state.error(`Unexpected algebraic string`, op.$line);
     }
@@ -6125,7 +6135,6 @@ export function syntax(source: string) {
     [token_type.inf]: [constant, ___, bp.atom],
     [token_type.nil]: [constant, ___, bp.atom],
     [token_type.numeric_constant]: [constant, ___, bp.atom],
-    [token_type.algebraic]: [algString, ___, bp.atom],
 
     // logical operations
     [token_type.and]: [___, logicInfix, bp.and],
@@ -6152,7 +6161,7 @@ export function syntax(source: string) {
     // native calls
     [token_type.native]: [ncall, ___, bp.call],
 
-    [token_type.algebra_string]: [___, ___, ___o],
+    [token_type.algebra_string]: [algString, ___, bp.atom],
   };
   /**
    * Returns the prefix parsing rule mapped to by the given
@@ -6521,6 +6530,7 @@ type TypeName =
   | "matrix"
   | "fn"
   | "class"
+  | "math_object"
   | "list"
   | "unknown";
 
@@ -6539,6 +6549,8 @@ function typename(x: Primitive): TypeName {
     return "bool";
   } else if (typeof x === "bigint") {
     return "big_integer";
+  } else if (x instanceof MathObj) {
+    return "math_object";
   } else if (x instanceof FRACTION) {
     return "fraction";
   } else if (x instanceof Exponential) {
@@ -6563,9 +6575,24 @@ function typename(x: Primitive): TypeName {
 }
 
 /** Returns a string form of the given Winnow primitive. */
-export function strof(u: Primitive) {
-  if (isExponential(u) || isFraction(u) || isErr(u)) {
+export function strof(u: Primitive): string {
+  if (
+    isExponential(u) ||
+    isFraction(u) ||
+    isErr(u) ||
+    u instanceof MathObj ||
+    u instanceof Err ||
+    u instanceof Obj ||
+    u instanceof Vector ||
+    u instanceof Matrix ||
+    u instanceof Fn ||
+    u instanceof Class ||
+    u instanceof LinkedList
+  ) {
     return u.toString();
+  } else if (Array.isArray(u)) {
+    const out = u.map((e) => strof(e)).join(", ");
+    return `[${out}]`;
   } else if (u === null) {
     return "nil";
   } else {
@@ -7327,7 +7354,7 @@ class Compiler implements Visitor<Primitive> {
   }
 
   algebraString(node: AlgebraString): Primitive {
-    throw new Error("Method not implemented.");
+    return node.$expression;
   }
 
   tupleExpr(node: TupleExpr): Primitive {
@@ -7428,61 +7455,48 @@ class Compiler implements Visitor<Primitive> {
     return value;
   }
 
-  nativeCallExpr(node: NativeCallExpr): Primitive {
-    const val = node.$args.map((v) => this.eval(v)) as any[];
-    switch (node.$name.$lexeme) {
-      case "gcd": {
-        const a = floor(val[0]);
-        const b = floor(val[1]);
-        return gcd(a, b);
+  private nativeFnOps: Record<NativeFn, (args: any[]) => Primitive> = {
+    ceil: (args) => ceil(args[0]),
+    floor: (args) => floor(args[0]),
+    sin: (args) => sin(args[0]),
+    cos: (args) => cos(args[0]),
+    cosh: (args) => cosh(args[0]),
+    tan: (args) => tan(args[0]),
+    lg: (args) => lg(args[0]),
+    ln: (args) => ln(args[0]),
+    log: (args) => log(args[0]),
+    arcsin: (args) => arcsin(args[0]),
+    arccos: (args) => arccos(args[0]),
+    arcsinh: (args) => arcsinh(args[0]),
+    arctan: (args) => arctan(args[0]),
+    sinh: (args) => sinh(args[0]),
+    sqrt: (args) => sqrt(args[0]),
+    tanh: (args) => tanh(args[0]),
+    gcd: (args) => gcd(floor(args[0]), floor(args[1])),
+    avg: (args) => avg(...args),
+    arccosh: (args) => arccosh(args[0]),
+    max: (args) => max(...args),
+    min: (args) => min(...args),
+    subexs: function (args: any[]): Primitive {
+      const arg = args[0];
+      if (!isMathObj(arg)) {
+        throw algebraError("non-mathematical object passed to subexs operator");
       }
-      case "tanh":
-        return tanh(val[0]);
-      case "sqrt":
-        return sqrt(val[0]);
-      case "sinh":
-        return sinh(val[0]);
-      case "exp":
-        return Math.exp(val[0]);
-      case "cosh":
-        return cosh(val[0]);
-      case "floor":
-        return floor(val[0]);
-      case "ceil":
-        return ceil(val[0]);
-      case "arctan":
-        return arctan(val[0]);
-      case "arcsinh":
-        return arcsinh(val[0]);
-      case "arcsin":
-        return arcsin(val[0]);
-      case "arccosh":
-        return arccosh(val[0]);
-      case "arccos":
-        return arccos(val[0]);
-      case "cos":
-        return cos(val[0]);
-      case "sin":
-        return sin(val[0]);
-      case "tan":
-        return tan(val[0]);
-      case "lg":
-        return lg(val[0]);
-      case "ln":
-        return ln(val[0]);
-      case "log":
-        return log(val[0]);
-      case "max":
-        return max(...val);
-      case "min":
-        return min(...val);
-      case "avg":
-        return avg(...val);
-    }
-    throw runtimeError(
-      `Native function "${node.$name.$lexeme}" not currently supported.`,
-      node.$name.$line
-    );
+      return subexs(arg);
+    },
+    simplify: function (args: any[]): Primitive {
+      const arg = args[0];
+      if (!isMathObj(arg)) {
+        throw algebraError("non-mathematical object passed to subexs operator");
+      }
+      return simplify(arg);
+    },
+  };
+
+  nativeCallExpr(node: NativeCallExpr): Primitive {
+    const args = node.$args.map((v) => this.eval(v)) as any[];
+    const f = node.$name.$lexeme as NativeFn;
+    return this.nativeFnOps[f](args);
   }
 
   negExpr(node: NegExpr): Primitive {
@@ -7617,9 +7631,9 @@ class Compiler implements Visitor<Primitive> {
         case token_type.minus:
           return L - R;
         case token_type.rem:
-          return L % R;
+          return rem(L,R);
         case token_type.mod:
-          return mod(L, R);
+          return mod(L,R);
         case token_type.percent:
           return percent(L, R);
         case token_type.div:
