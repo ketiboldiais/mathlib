@@ -1723,7 +1723,98 @@ class ACommand extends PathCommand {
   }
 }
 
-class Path {
+enum graphics2D {
+  line,
+  path,
+  circle,
+  group,
+  text,
+  arrowhead,
+}
+
+/** An object corresponding to a 2D SVG object. */
+export abstract class Graphics2DObj {
+  $id: string | number = uid(10);
+  id(value: string | number) {
+    this.$id = value;
+    return this;
+  }
+  abstract kind(): graphics2D;
+  abstract childOf(parentObj: SVG2D | null): this;
+  abstract interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ): this;
+  $parentSVG: SVG2D | null = null;
+}
+
+
+class SVG2D {
+  $children: Graphics2DObj[];
+
+  constructor(children: Graphics2DObj[]) {
+    this.$children = children;
+  }
+
+  $dimensions: [number, number] = [500, 500];
+
+  /** The width of this SVG. */
+  get $width() {
+    return this.$dimensions[0];
+  }
+
+  /** The height of this SVG. */
+  get $height() {
+    return this.$dimensions[1];
+  }
+
+  dimensions(width: number, height: number) {
+    this.$dimensions = [width, height];
+    return this;
+  }
+
+  $domain: [number, number] = [-5, 5];
+
+  domain(xmin: number, xmax: number) {
+    this.$domain = [xmin, xmax];
+    return this;
+  }
+
+  $range: [number, number] = [-5, 5];
+
+  range(ymin: number, ymax: number) {
+    this.$range = [ymin, ymax];
+    return this;
+  }
+
+  done() {
+    this.$children.forEach((child) => {
+      child.childOf(this);
+      child.interpolate2D(this.$domain, this.$range, this.$dimensions);
+    });
+    return this;
+  }
+}
+
+export function svg2D(children: Graphics2DObj[]) {
+  return new SVG2D(children);
+}
+
+abstract class GraphicsAtom2D extends Graphics2DObj {
+  abstract kind(): graphics2D;
+}
+
+export class Path extends GraphicsAtom2D {
+  kind(): graphics2D {
+    return graphics2D.path;
+  }
+
+  childOf(parent: SVG2D | null) {
+    this.$parentSVG = parent;
+    return this;
+  }
+
   /** The SVG commands comprising this path. */
   $commands: PathCommand[];
 
@@ -1969,6 +2060,7 @@ class Path {
   }
 
   constructor(x: number, y: number, z: number = 1) {
+    super();
     this.$origin = vector([0, 0, 0]);
     this.$cursor = vector([x, y, z]);
     this.$commands = [PathCommand.M(x, y, z)];
@@ -2058,8 +2150,174 @@ class Path {
  * starting point. By default, the path starts
  * at position (0,0,1).
  */
-function path(x: number = 0, y: number = 0, z: number = 1) {
+export function path(x: number = 0, y: number = 0, z: number = 1) {
   return new Path(x, y, z);
+}
+
+/** Returns true and asserts if the given object is an SVG Path object. */
+export function isPath(obj: Graphics2DObj): obj is Path {
+  return obj.kind() === graphics2D.path;
+}
+
+class ArrowHead2D extends GraphicsAtom2D {
+  kind(): graphics2D {
+    return graphics2D.arrowhead;
+  }
+  childOf(parentObj: SVG2D | null): this {
+    this.$parentSVG = parentObj;
+    return this;
+  }
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ): this {
+    return this;
+  }
+}
+
+
+abstract class GraphicsCompound2D extends Graphics2DObj {
+  abstract kind(): graphics2D;
+  $children: Graphics2DObj[] = [];
+}
+
+export class Group2D extends GraphicsCompound2D {
+  kind(): graphics2D {
+    return graphics2D.group;
+  }
+
+  childOf(parent: SVG2D | null): this {
+    this.$parentSVG = parent;
+    this.$children.forEach((child) => {
+      child.childOf(parent);
+    });
+    return this;
+  }
+
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ) {
+    this.$children.forEach((child) => {
+      child.interpolate2D(domain, range, dimensions);
+    });
+    return this;
+  }
+
+  constructor(children: Graphics2DObj[]) {
+    super();
+    this.$children = children;
+  }
+}
+
+/** Returns a new SVG group object. */
+export function group2D(children: Graphics2DObj[]) {
+  return new Group2D(children);
+}
+
+/** Returns true and asserts if the given object is an SVG group object. */
+export function isGroup2D(obj: Graphics2DObj): obj is Group2D {
+  return obj.kind() === graphics2D.group;
+}
+
+class CartesianPlot2D extends Group2D {
+  $fn: string;
+  constructor(fn: string) {
+    super([]);
+    this.$fn = fn;
+  }
+  $domain: [number, number] = [-5, 5];
+  get $xMin() {
+    return this.$domain[0];
+  }
+  get $xMax() {
+    return this.$domain[1];
+  }
+  domain(xmin: number, xmax: number) {
+    this.$domain = [xmin, xmax];
+    return this;
+  }
+  $range: [number, number] = [-5, 5];
+  get $yMin() {
+    return this.$range[0];
+  }
+  get $yMax() {
+    return this.$range[1];
+  }
+  range(xmin: number, xmax: number) {
+    this.$range = [xmin, xmax];
+    return this;
+  }
+  $samples: number = 200;
+  samples(value: number) {
+    this.$samples = value;
+    return this;
+  }
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ) {
+    domain = this.$domain;
+    range = this.$range;
+    this.$children.forEach((child) => {
+      child.interpolate2D(domain, range, dimensions);
+    });
+    return this;
+  }
+  done() {
+    const out: PathCommand[] = [];
+    const xmin = this.$xMin;
+    const xmax = this.$xMax;
+    const ymin = this.$yMin;
+    const ymax = this.$yMax;
+    const e = engine();
+    const fn = e.compile(this.$fn);
+    if (!(fn instanceof Fn)) {
+      return this;
+    }
+    const dataset: [number, number][] = [];
+    for (let i = -this.$samples; i < this.$samples; i++) {
+      const x = (i / this.$samples) * xmax;
+      const _y = fn.call(e.compiler, [x]);
+      if (typeof _y !== "number") continue;
+      const y = _y;
+      const point: [number, number] = [x, y];
+      if (Number.isNaN(y) || y < ymin || ymax < y) point[1] = NaN;
+      if (x < xmin || xmax < x) continue;
+      else dataset.push(point);
+    }
+    // TODO implement integration
+    let moved = false;
+    for (let i = 0; i < dataset.length; i++) {
+      const datum = dataset[i];
+      if (!Number.isNaN(datum[1])) {
+        if (!moved) {
+          out.push(PathCommand.M(datum[0], datum[1], 1));
+          moved = true;
+        } else {
+          out.push(PathCommand.L(datum[0], datum[1], 1));
+        }
+      } else {
+        const next = dataset[i + 1];
+        if (next !== undefined && !Number.isNaN(next[1])) {
+          out.push(PathCommand.M(next[0], next[1], 1));
+        }
+      }
+    }
+    const p = path(out[0].$end.$x, out[0].$end.$y, out[0].$end.$z);
+    for (let i = 1; i < out.length; i++) {
+      p.$commands.push(out[i]);
+    }
+    this.$children.push(p);
+    return this;
+  }
+}
+
+export function cplot2D(fn: string) {
+  return new CartesianPlot2D(fn);
 }
 
 /** A value native to Winnow. */
