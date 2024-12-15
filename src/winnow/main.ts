@@ -659,6 +659,15 @@ function gcd(a: number, b: number) {
   return a;
 }
 
+/** Returns an array of numbers running from start (inclusive) to stop (inclusive) */
+function range(start: number, stop: number, step = 1): number[] {
+  const out = [];
+  for (let i = start; i < stop; i += step) {
+    out.push(i);
+  }
+  return out;
+}
+
 /** Computes the arithmetic mean of the given list of numbers. */
 function avg(...nums: number[]) {
   let sum = 0;
@@ -677,6 +686,48 @@ function factorialize(num: number) {
     num *= i;
   }
   return num;
+}
+
+/** Returns the clamping of the given input. I.e., if `input` is less than `min`, returns `min`. If `input` is greater than `max`, returns `max`. Otherwise, returns `input`. */
+function clamp(minimum: number, input: number, maximum: number) {
+  return min(max(input, minimum), maximum);
+}
+
+/** Given the number pair `(x1,x2)` returns the value between `x1` and `x2` at `p` percent of the dsitance between `x1` and `x2`. Useful for computations like: “What x-coordinate is 35% between 46 and 182?” Note that the percentage `p` is assumed to be between `0` and `1`. */
+function lerp([x1, x2]: [number, number], p: number) {
+  return x1 * (1 - p) + x2 * p;
+}
+
+/** Given the number pair `(x,y)`, returns the value at the given decimal point `a`. Used primarily for computations like: How far through this line has this point moved? */
+function inverseLerp([x, y]: [number, number], a: number) {
+  return clamp(0, (a - x) / (y - x), 1);
+}
+
+/** Returns a linear interpolator. The `domain` is the interval of input values – a pair of numbers `(a,b)` where `a` is the smallest possible input and `b` is the largest. The `range` is the interval of scale values - a pair of numbers `(a,b)` where `a` is the smallest possible scaled value and `b` is the largest. */
+export function interpolator(
+  domain: [number, number],
+  range: [number, number]
+) {
+  return (n: number) =>
+    range[0] +
+    ((range[1] - range[0]) / (domain[1] - domain[0])) * (n - domain[0]);
+}
+
+/** Interpolates the number `n` based on the specified domain and range. */
+export function interpolate(
+  n: number,
+  domain: [number, number],
+  range: [number, number]
+) {
+  return interpolator(domain, range)(n);
+}
+
+/** A utility method that generates a pseudorandom string. @param length - The max length of the resulting string. @param base - The base from which to draw characters. */
+function uid(length: number = 4, base = 36) {
+  return Math.random()
+    .toString(base)
+    .replace(/[^a-z]+/g, "")
+    .substring(0, length + 1);
 }
 
 /** Rounds the given number value to the number of given decimal places. */
@@ -727,6 +778,23 @@ class Vector<T extends number[] = number[]> {
       : vector(other);
     const [A, B] = equalen(this, arg);
     return vector(A.$elements.map((c, i) => op(c, B.$elements[i])));
+  }
+
+  /**
+   * Returns a new vector, resulting from
+   * multiplying this vector by the given
+   * matrix.
+   */
+  vxm(matrix: Matrix) {
+    if (this.length !== matrix.$C) return this;
+    const vector = new Vector([] as number[]);
+    for (let i = 1; i <= matrix.$R; i++) {
+      const v = matrix.element(i);
+      if (v === null) return this;
+      const d = this.dot(v);
+      vector.$elements[i - 1] = d;
+    }
+    return vector;
   }
 
   /** Returns the smallest component of this vector. */
@@ -1441,6 +1509,7 @@ enum pc {
   A,
   Z,
 }
+
 abstract class PathCommand {
   $type: pc;
   $end: Vector;
@@ -1488,8 +1557,8 @@ abstract class PathCommand {
   }
 
   /** Returns a new A-command. */
-  static A(x:number, y:number, z:number=1) {
-    return new ACommand(x,y,z);
+  static A(x: number, y: number, z: number = 1) {
+    return new ACommand(x, y, z);
   }
 }
 
@@ -1621,22 +1690,22 @@ class ACommand extends PathCommand {
     return this;
   }
   /** Sets this A-command's sweep flag. */
-  sweep(value: 0|1) {
+  sweep(value: 0 | 1) {
     this.$sweep = value;
     return this;
   }
   /** Sets this A-command's rx value. */
-  rx(value:number) {
+  rx(value: number) {
     this.$rx = value;
     return this;
   }
   /** Sets this A-command's ry value. */
-  ry(value:number) {
+  ry(value: number) {
     this.$ry = value;
     return this;
   }
   /** Sets this A-command's rotation value. */
-  rotate(value:number) {
+  rotate(value: number) {
     this.$rotation = value;
     return this;
   }
@@ -1652,6 +1721,778 @@ class ACommand extends PathCommand {
     ].join(",");
     return "A" + out;
   }
+}
+
+enum graphics {
+  path,
+  text,
+  plot2D,
+  line2D,
+}
+
+abstract class GraphicsObj {
+  abstract kind(): graphics;
+  abstract interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ): this;
+}
+
+class Graphic2D {
+  $children: GraphicsObj[] = [];
+  $dimensions: [number, number] = [500, 500];
+  get $width() {
+    return this.$dimensions[0];
+  }
+
+  width(w: number) {
+    this.$dimensions[0] = w;
+    return this;
+  }
+
+  get $height() {
+    return this.$dimensions[1];
+  }
+
+  height(h: number) {
+    this.$dimensions[1] = h;
+    return this;
+  }
+
+  children(...figures: GraphicsObj[]) {
+    figures.forEach((child) => this.$children.push(child));
+    return this;
+  }
+
+  $domain: [number, number] = [-10, 10];
+  domain(xmin: number, xmax: number) {
+    this.$domain = [xmin, xmax];
+    return this;
+  }
+
+  $range: [number, number] = [-10, 10];
+  range(ymin: number, ymax: number) {
+    this.$range = [ymin, ymax];
+    return this;
+  }
+
+  end() {
+    for (let i = 0; i < this.$children.length; i++) {
+      this.$children[i].interpolate2D(
+        this.$domain,
+        this.$range,
+        this.$dimensions
+      );
+    }
+    return this;
+  }
+}
+
+class Path extends GraphicsObj {
+  kind(): graphics {
+    return graphics.path;
+  }
+  /** The SVG commands comprising this path. */
+  $commands: PathCommand[];
+
+  /** This SVG path's current cursor position. */
+  $cursor: Vector;
+
+  /** The position where this path starts. */
+  $origin: Vector;
+
+  /** This path's unique identifier. */
+  $id: string = uid(10);
+
+  /** Sets this path's unique identifier. */
+  id(value: string) {
+    this.$id = value;
+    return this;
+  }
+
+  /** Returns how many commands this path comprises. */
+  get $length() {
+    return this.$commands.length;
+  }
+
+  /** Returns the first command of this path. */
+  get $firstCommand() {
+    return this.$commands[0];
+  }
+
+  get $lastCommand() {
+    const out = this.$commands[this.$length - 1];
+    if (out === undefined) {
+      return PathCommand.M(this.$origin.$x, this.$origin.$y, this.$origin.$z);
+    } else {
+      return out;
+    }
+  }
+
+  /**
+   * Applies the given vector operation
+   * to each position vector of this path's
+   * commands.
+   */
+  tfm(op: (v: Vector) => Vector) {
+    this.$commands = this.$commands.map((p) => {
+      const e = op(p.$end);
+      switch (p.$type) {
+        case pc.M:
+          return PathCommand.M(e.$x, e.$y, e.$z);
+        case pc.H:
+        case pc.L:
+        case pc.V:
+          return PathCommand.L(e.$x, e.$y, e.$z);
+        case pc.Q: {
+          const c = op((p as QCommand).$ctrl1);
+          return PathCommand.Q(e.$x, e.$y, e.$z).ctrlPoint(c.$x, c.$y, c.$z);
+        }
+        case pc.C: {
+          const c1 = op((p as CCommand).$ctrl1);
+          const c2 = op((p as CCommand).$ctrl2);
+          return PathCommand.C(e.$x, e.$y, e.$z)
+            .ctrl1(c1.$x, c1.$y, c1.$z)
+            .ctrl2(c2.$x, c2.$y, c2.$z);
+        }
+        case pc.A: {
+          const s = p as ACommand;
+          return PathCommand.A(e.$x, e.$y, e.$z)
+            .rx(s.$rx)
+            .ry(s.$ry)
+            .rotate(s.$rotation)
+            .largeArc(s.$largeArc)
+            .sweep(s.$sweep);
+        }
+        default:
+          return p;
+      }
+    });
+    return this;
+  }
+
+  /** Sets this path's origin. */
+  origin(x: number, y: number, z: number = 1) {
+    this.$origin = vector([x, y, z]);
+    return this;
+  }
+
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ) {
+    const X = interpolator(domain, [0, dimensions[0]]);
+    const Y = interpolator(range, [dimensions[1], 0]);
+    this.$commands = this.$commands.map((c) => {
+      const end = c.$end;
+      const [x, y, z] = [X(end.$x), Y(end.$y), end.$z];
+      switch (c.$type) {
+        case pc.M:
+          return PathCommand.M(x, y, z);
+        case pc.H:
+        case pc.L:
+        case pc.V:
+          return PathCommand.L(x, y, z);
+        case pc.Q: {
+          const ctrl = (c as QCommand).$ctrl1;
+          return PathCommand.Q(x, y, z).ctrlPoint(
+            X(ctrl.$x),
+            Y(ctrl.$y),
+            ctrl.$z
+          );
+        }
+        case pc.C: {
+          const ctrl1 = (c as CCommand).$ctrl1;
+          const ctrl2 = (c as CCommand).$ctrl2;
+          return PathCommand.C(x, y, z)
+            .ctrl1(X(ctrl1.$x), Y(ctrl1.$y), ctrl1.$z)
+            .ctrl2(X(ctrl2.$x), Y(ctrl2.$y), ctrl2.$z);
+        }
+        case pc.A: {
+          const j = c as ACommand;
+          return PathCommand.A(x, y, z)
+            .rx(j.$rx)
+            .ry(j.$ry)
+            .rotate(j.$rotation)
+            .largeArc(j.$largeArc)
+            .sweep(j.$sweep);
+        }
+        default:
+          return c;
+      }
+    });
+    return this;
+  }
+
+  rotateZ(angle: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [cos(angle), sin(angle), 0],
+          [-sin(angle), cos(angle), 0],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  rotateY(angle: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [cos(angle), 0, -sin(angle)],
+          [0, 1, 0],
+          [sin(angle), 0, cos(angle)],
+        ])
+      )
+    );
+  }
+
+  rotateX(angle: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, 0],
+          [0, cos(angle), -sin(angle)],
+          [0, sin(angle), cos(angle)],
+        ])
+      )
+    );
+  }
+
+  scale(x: number, y: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [x, 0, 0],
+          [0, y, 0],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  translateZ(z: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, 1],
+          [0, 1, 1],
+          [0, 0, z],
+        ])
+      )
+    );
+  }
+
+  translateY(y: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, 1],
+          [0, 1, y],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  translateX(x: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, x],
+          [0, 1, 1],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  shearZ(dx: number, dy: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, 0],
+          [0, 1, 0],
+          [dx, dy, 1],
+        ])
+      )
+    );
+  }
+
+  shearX(dy: number, dz: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, dy, dz],
+          [0, 1, 0],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  translate(x: number, y: number) {
+    return this.tfm((v) =>
+      v.vxm(
+        matrix([
+          [1, 0, x],
+          [0, 1, y],
+          [0, 0, 1],
+        ])
+      )
+    );
+  }
+
+  constructor(x: number, y: number, z: number = 1) {
+    super();
+    this.$origin = vector([0, 0, 0]);
+    this.$cursor = vector([x, y, z]);
+    this.$commands = [PathCommand.M(x, y, z)];
+  }
+
+  /** Returns this path's command list as a vector. */
+  toString() {
+    const origin = PathCommand.M(
+      this.$origin.$x,
+      this.$origin.$y,
+      this.$origin.$z
+    ).toString();
+    const out = this.$commands.map((c) => c.toString());
+    return origin + out.join("");
+  }
+
+  /**
+   * Adds the given command to this path's
+   * command list and moves the path's
+   * cursor to the given command's endpoint.
+   */
+  private push(command: PathCommand) {
+    this.$commands.push(command);
+    this.$cursor = command.$end;
+    return this;
+  }
+
+  /**
+   * Adds an SVG arc command to this path's command list.
+   * @param end The arc’s end point.
+   * @param dimensions A pair `[w,h]` where `w` is the width of the arc,
+   * and `h` is the height of the arc.
+   * @param rotation The arc’s rotation along its x-axis.
+   * @param largeArc The arc's large arc flag.
+   * @param sweep The arc's sweep flag.
+   */
+  A(
+    end: [number, number],
+    dimensions: [number, number] = [1, 1],
+    rotation: number = 0,
+    largeArc: 0 | 1 = 0,
+    sweep: 0 | 1 = 1
+  ) {
+    const p = PathCommand.A(end[0], end[1], 1)
+      .rx(dimensions[0])
+      .ry(dimensions[1])
+      .rotate(rotation)
+      .largeArc(largeArc)
+      .sweep(sweep);
+    return this.push(p);
+  }
+
+  /**
+   * Appends a V-command to this path's command list, where
+   * y is the coordinate to move vertically to.
+   */
+  V(y: number) {
+    const l = PathCommand.L(this.$cursor.$x, y);
+    return this.push(l);
+  }
+
+  /**
+   * Appends an H-command to this path's command list, where
+   * x is the coordinate to move horizontally to.
+   */
+  H(x: number) {
+    const h = PathCommand.H(x, this.$cursor.$y);
+    return this.push(h);
+  }
+
+  /**
+   * Appends an M-command to this path's command list.
+   */
+  M(x: number, y: number, z: number = 1) {
+    return this.push(PathCommand.M(x, y, z));
+  }
+
+  /** Closes this path's command list. */
+  Z() {
+    return this.push(PathCommand.Z());
+  }
+}
+
+/**
+ * Returns a new path command. The arguments `x`,
+ * `y`, and `z` may be passed to set the path's
+ * starting point. By default, the path starts
+ * at position (0,0,1).
+ */
+function path(x: number = 0, y: number = 0, z: number = 1) {
+  return new Path(x, y, z);
+}
+
+/** Returns true, and asserts, if the given object is a Path object. */
+export function isPath(obj: GraphicsObj): obj is Path {
+  return obj.kind() === graphics.path;
+}
+
+/** An object corresponding to an SVG text element. */
+class Text extends GraphicsObj {
+  $id: string = uid(10);
+  id(value: string) {
+    this.$id = value;
+    return this;
+  }
+  kind(): graphics {
+    return graphics.text;
+  }
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ) {
+    const X = interpolator(domain, [0, dimensions[0]]);
+    const Y = interpolator(range, [dimensions[1], 0]);
+    this.$position = vector([X(this.$position.$x), Y(this.$position.$y)]);
+    return this;
+  }
+  $position: Vector;
+  position(x: number, y: number, z: number = 1) {
+    this.$position = vector([x, y, z]);
+    return this;
+  }
+  $text: string;
+  text(t: string) {
+    this.$text = t;
+    return this;
+  }
+  $fontFamily?: string;
+  fontFamily(value: string) {
+    this.$fontFamily = value;
+    return this;
+  }
+  $fontSize?: string | number;
+  fontSize(value: string | number) {
+    this.$fontSize = value;
+    return this;
+  }
+  $fontColor?: string;
+  fontColor(value: string) {
+    this.$fontColor = value;
+    return this;
+  }
+  $textAnchor: "start" | "middle" | "end" = "middle";
+  textAnchor(value: "start" | "middle" | "end") {
+    this.$textAnchor = value;
+    return this;
+  }
+  constructor(textcontent: string) {
+    super();
+    this.$text = textcontent;
+    this.$position = vector([0, 0, 1]);
+  }
+}
+
+/**
+ * Returns a new SVG text object.
+ * @param content The text's content.
+ * @returns Text
+ */
+export function text(content: string | number) {
+  return new Text(typeof content === "number" ? `${content}` : content);
+}
+
+/** Returns true, and asserts, if the given object is a Text object. */
+export function isText(obj: GraphicsObj): obj is Text {
+  return obj.kind() === graphics.text;
+}
+
+class Line2D extends GraphicsObj {
+  $id: string = uid(10);
+  id(value: string) {
+    this.$id = value;
+    return this;
+  }
+  kind(): graphics {
+    return graphics.line2D;
+  }
+  interpolate2D(
+    domain: [number, number],
+    range: [number, number],
+    dimensions: [number, number]
+  ) {
+    const X = interpolator(domain, [0, dimensions[0]]);
+    const Y = interpolator(range, [dimensions[1], 0]);
+    this.$start = vector([X(this.$start.$x), Y(this.$start.$y)]);
+    this.$end = vector([X(this.$end.$x), Y(this.$end.$y)]);
+    return this;
+  }
+  $start: Vector;
+  start(x: number, y: number) {
+    this.$start = vector([x, y]);
+    return this;
+  }
+  $end: Vector;
+  end(x: number, y: number) {
+    this.$end = vector([x, y]);
+    return this;
+  }
+  constructor(start: [number, number], end: [number, number]) {
+    super();
+    this.$start = vector(start);
+    this.$end = vector(end);
+  }
+}
+
+function line2D(start: [number, number], end: [number, number]) {
+  return new Line2D(start, end);
+}
+
+/** Returns true, and asserts, if the given object is a Line2D object. */
+export function isLine2D(obj: GraphicsObj): obj is Line2D {
+  return obj.kind() === graphics.line2D;
+}
+
+export type Tick = {
+  tick: Line2D;
+  txt: Text;
+};
+
+export function tickLines2D(
+  length: number,
+  min: number,
+  max: number,
+  step: number,
+  orient: "x" | "y"
+) {
+  const numbers = range(min, max, step);
+  const output: Tick[] = [];
+  if (orient === "x") {
+    numbers.forEach((n) => {
+      const tick = line2D([n, -length], [n, length]);
+      const txt = text(n).position(tick.$start.$x, tick.$start.$y);
+      output.push({ tick, txt });
+    });
+  } else
+    numbers.forEach((n) => {
+      const tick = line2D([-length, n], [length, n]);
+      const txt = text(n).position(tick.$start.$x, tick.$start.$y);
+      output.push({ tick, txt });
+    });
+  return output;
+}
+
+class Plot2D extends Graphic2D {
+  kind(): graphics {
+    return graphics.plot2D;
+  }
+
+  $f: string = "";
+
+  axis(option: "x" | "y" | "xy") {
+    const x_axis = () => {
+      const xmin = this.$domain[0];
+      const xmax = this.$domain[1];
+      const xline = line2D([xmin, 0], [xmax, 0]);
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // );
+      this.$children.push(xline);
+    };
+    const y_axis = () => {
+      const ymin = this.$range[0];
+      const ymax = this.$range[1];
+      const yline = line2D([0, ymin], [0, ymax]);
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // );
+      this.$children.push(yline);
+    };
+    if (option === "xy") {
+      x_axis();
+      y_axis();
+      return this;
+    }
+    if (option === "x") {
+      x_axis();
+      return this;
+    }
+    if (option === "y") {
+      y_axis();
+      return this;
+    }
+    return this;
+  }
+
+  yTicks(tickLength: number = 0.2, step: number = 1) {
+    const output = tickLines2D(
+      tickLength,
+      this.$range[0],
+      this.$range[1],
+      step,
+      "y"
+    );
+    output.forEach((tick) => {
+      const l = tick.tick;
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // );
+      const t = tick.txt;
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // )
+      this.$children.push(l, t);
+    });
+    return this;
+  }
+
+  xTicks(tickLength: number = 0.2, step: number = 1) {
+    const output = tickLines2D(
+      tickLength,
+      this.$domain[0],
+      this.$domain[1],
+      step,
+      "x"
+    );
+    output.forEach((tick) => {
+      const l = tick.tick;
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // );
+      const t = tick.txt;
+      // .interpolate2D(
+      // this.$domain,
+      // this.$range,
+      // this.$dimensions
+      // )
+      this.$children.push(l, t);
+    });
+    return this;
+  }
+
+  $domain: [number, number] = [-10, 10];
+
+  /** The smallest input to this plot's function. */
+  get $xMin() {
+    return this.$domain[0];
+  }
+
+  /** The largest input to this plot's function. */
+  get $xMax() {
+    return this.$domain[1];
+  }
+
+  /** The smallest possible output to this plot's function. */
+  get $yMin() {
+    return this.$range[0];
+  }
+
+  /** The largest possible output to this plot's function. */
+  get $yMax() {
+    return this.$range[1];
+  }
+
+  /** Sets the function plot's domain. */
+  domain(xMin: number, xMax: number) {
+    this.$domain = [xMin, xMax];
+    return this;
+  }
+
+  /** The number of samples to take when plotting the function. */
+  $samples: number = 200;
+
+  $dimensions: [number, number] = [200, 200];
+
+  dimensions(width: number, height: number) {
+    this.$dimensions = [width, height];
+    return this;
+  }
+
+  /** Sets the number of samples to take when plotting. */
+  samples(value: number) {
+    this.$samples = value;
+    return this;
+  }
+
+  constructor(fn: string) {
+    super();
+    this.$f = fn;
+  }
+
+  $children: (Path | Line2D | Text)[] = [];
+
+  plot() {
+    const out: PathCommand[] = [];
+    const xmin = this.$xMin;
+    const xmax = this.$xMax;
+    const ymin = this.$yMin;
+    const ymax = this.$yMax;
+    const e = engine();
+    const fn = e.compile(this.$f);
+    if (!(fn instanceof Fn)) {
+      return this;
+    }
+    const dataset: [number, number][] = [];
+    for (let i = -this.$samples; i < this.$samples; i++) {
+      const x = (i / this.$samples) * xmax;
+      const _y = fn.call(e.compiler, [x]);
+      if (typeof _y !== "number") continue;
+      const y = _y;
+      const point: [number, number] = [x, y];
+      if (Number.isNaN(y) || y < ymin || ymax < y) point[1] = NaN;
+      if (x < xmin || xmax < x) continue;
+      else dataset.push(point);
+    }
+    // TODO implement integration
+    let moved = false;
+    for (let i = 0; i < dataset.length; i++) {
+      const datum = dataset[i];
+      if (!Number.isNaN(datum[1])) {
+        if (!moved) {
+          out.push(PathCommand.M(datum[0], datum[1], 1));
+          moved = true;
+        } else {
+          out.push(PathCommand.L(datum[0], datum[1], 1));
+        }
+      } else {
+        const next = dataset[i + 1];
+        if (next !== undefined && !Number.isNaN(next[1])) {
+          out.push(PathCommand.M(next[0], next[1], 1));
+        }
+      }
+    }
+    const p = path(out[0].$end.$x, out[0].$end.$y, out[0].$end.$z);
+    for (let i = 1; i < out.length; i++) {
+      p.$commands.push(out[i]);
+    }
+    // p.interpolate2D(this.$domain, this.$range, this.$dimensions);
+    this.$children.push(p);
+    return this;
+  }
+}
+
+export function plot2D(func: string) {
+  return new Plot2D(func);
 }
 
 /** A value native to Winnow. */
@@ -1672,11 +2513,6 @@ type Primitive =
   | Fn
   | Class
   | Err;
-
-/** Returns true iff `x` is null. */
-function isNull(x: any): x is null {
-  return x === null;
-}
 
 // § Token Types
 
@@ -1993,7 +2829,7 @@ export function lexical(code: string) {
    * Returns true if the scanner has reached the end
    * of code.
    */
-  const atEnd = (): boolean => $current >= code.length || !isNull($error);
+  const atEnd = (): boolean => $current >= code.length || $error !== null;
 
   /**
    * Consumes and returns the next character
@@ -8140,6 +8976,7 @@ export function engine() {
   };
   return {
     compile,
+    compiler,
     ast,
     tokens,
   };

@@ -10,7 +10,7 @@ Welcome to Winnow. On this page's sections, click to the right of the dollar sig
 Winnow supports basic arithmetic operations. Winnow's core arithmetic operations are displayed in the REPL below.
 
 <REPL 
-    height={550}
+    height={530}
     initialLines={[
         {type: 'input', value: '5 + 5'},
         {type: 'output', value: '10'},
@@ -36,6 +36,7 @@ Winnow supports basic arithmetic operations. Winnow's core arithmetic operations
 We used integers for the examples above, but certain operations are free to take floating point numbers (i.e., "floats"):
 
 <REPL
+    height={295}
     initialLines={[
         {type: 'input', value: '3.5 + 7.6'},
         {type: 'output', value: '11.1'},
@@ -50,7 +51,7 @@ We used integers for the examples above, but certain operations are free to take
     ]}
 />
 
-Integers and floats are considered __primitives__ in Winnow. The set of primitives also includes fractions. Fractions are written with the syntax ${a|b,}$ where ${a}$ and ${b}$ are integers.
+Integers and floats are considered __primitives__ in Winnow. The set of primitives also includes fractions. Fractions are written with the syntax ${a|b}$, where ${a}$ and ${b}$ are integers.
 
 
 <REPL
@@ -59,7 +60,11 @@ Integers and floats are considered __primitives__ in Winnow. The set of primitiv
         {type: 'output', value: '7|6'},
         {type: 'input', value: '1|17 - 2|19'},
         {type: 'output', value: '-15|323'},
+        {type: 'input', value: '3|4 * 2|7'},
+        {type: 'output', value: '3|14'},
     ]}
 />
 
 Winnow's core arithmetic operations are defined below.
+
+<Fig/>
